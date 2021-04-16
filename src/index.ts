@@ -1,17 +1,15 @@
 import {
   get,
   set,
-  getMany,
   setMany,
-  del,
   clear,
   createStore,
 } from 'idb-keyval'
 import {
   str2ab,
-  b64url2arr,
-  arr2b64url,
-  decodeJwtPayload,
+  arr2str,
+  b642arr,
+  arr2b64,
   concat
 } from './helper'
 
@@ -56,9 +54,9 @@ class BlindnetServiceHttp implements BlindnetService {
         },
         body: JSON.stringify({
           jwt: this.jwt,
-          PK: arr2b64url(pk),
-          eSK: arr2b64url(esk),
-          salt: arr2b64url(salt)
+          PK: arr2b64(pk),
+          eSK: arr2b64(esk),
+          salt: arr2b64(salt)
         })
       })
 
@@ -191,8 +189,8 @@ class BlindnetServiceHttp implements BlindnetService {
       },
       body: JSON.stringify({
         jwt: this.jwt,
-        eSK: arr2b64url(esk),
-        salt: arr2b64url(salt)
+        eSK: arr2b64(esk),
+        salt: arr2b64(salt)
       })
     })
 
@@ -251,12 +249,10 @@ class IndexedDbKeyStore implements KeyStore {
 
 
 class BlindnetSdk {
-  private jwt = undefined
   private service: BlindnetService = undefined
   private keyStore: KeyStore = undefined
 
   private constructor(jwt: string) {
-    this.jwt = jwt
     this.service = new BlindnetServiceHttp(jwt)
     this.keyStore = new IndexedDbKeyStore()
   }
@@ -265,12 +261,38 @@ class BlindnetSdk {
     return new BlindnetSdk(jwt)
   }
 
-  //
-  // TODO: update service n stuff
-  //
-  //
   refreshJwt(jwt: string) {
-    this.jwt = jwt
+    this.service = new BlindnetServiceHttp(jwt)
+  }
+
+  static async derivePasswords(password: string): Promise<{ blindnetPassphrase: string, appPassword: string }> {
+    const passKey = await window.crypto.subtle.importKey(
+      "raw",
+      str2ab(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    )
+
+    // TODO: bit derivation should be salted
+    // const salt = window.crypto.getRandomValues(new Uint8Array(16))
+    const salt = new Uint8Array([241, 211, 153, 239, 17, 34, 5, 112, 167, 218, 57, 131, 99, 29, 243, 84])
+
+    const derivedBits = await window.crypto.subtle.deriveBits(
+      {
+        "name": "PBKDF2",
+        salt: salt,
+        "iterations": 64206,
+        "hash": "SHA-256"
+      },
+      passKey,
+      512
+    )
+
+    const blindnetPassBits = new Uint8Array(derivedBits, 0, 32)
+    const appPassBits = new Uint8Array(derivedBits, 32, 32)
+
+    return { blindnetPassphrase: arr2b64(blindnetPassBits), appPassword: arr2b64(appPassBits) }
   }
 
   async initUser(passphrase: string): Promise<void> {
@@ -291,18 +313,18 @@ class BlindnetSdk {
 
         const PK = await window.crypto.subtle.importKey(
           "spki",
-          b64url2arr(PKspki),
+          b642arr(PKspki),
           { name: "RSA-OAEP", hash: "SHA-256" },
           true,
           ["encrypt"]
         )
 
-        const aesKey = await deriveAESKey(passphrase, b64url2arr(salt))
+        const aesKey = await deriveAESKey(passphrase, b642arr(salt))
 
         const iv = new Uint8Array(12)
         const SK = await window.crypto.subtle.unwrapKey(
           "pkcs8",
-          b64url2arr(eSK),
+          b642arr(eSK),
           aesKey,
           { name: "AES-GCM", iv: iv },
           { name: "RSA-OAEP", hash: "SHA-256" },
@@ -355,7 +377,7 @@ class BlindnetSdk {
 
             const PK = await window.crypto.subtle.importKey(
               "spki",
-              b64url2arr(user.PK),
+              b642arr(user.PK),
               { name: "RSA-OAEP", hash: "SHA-256" },
               true,
               ["wrapKey"]
@@ -368,7 +390,7 @@ class BlindnetSdk {
               { name: "RSA-OAEP" }
             )
 
-            return { user_id: user.user_id, eKey: arr2b64url(encDataKey) }
+            return { user_id: user.user_id, eKey: arr2b64(encDataKey) }
           }))
 
         const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
@@ -400,7 +422,7 @@ class BlindnetSdk {
 
         const dataKey = await window.crypto.subtle.unwrapKey(
           "jwk",
-          b64url2arr(eDataKey),
+          b642arr(eDataKey),
           SK,
           { name: "RSA-OAEP" },
           { name: "AES-GCM", length: 256 },
@@ -477,7 +499,7 @@ class BlindnetSdk {
 
             const userPK = await window.crypto.subtle.importKey(
               "spki",
-              b64url2arr(userPKspki),
+              b642arr(userPKspki),
               { name: "RSA-OAEP", hash: "SHA-256" },
               false,
               ["wrapKey"]
@@ -488,7 +510,7 @@ class BlindnetSdk {
 
                 const dataKey = await window.crypto.subtle.unwrapKey(
                   "jwk",
-                  b64url2arr(edk.eKey),
+                  b642arr(edk.eKey),
                   SK,
                   { name: "RSA-OAEP" },
                   { name: "AES-GCM", length: 256 },
@@ -503,7 +525,7 @@ class BlindnetSdk {
                   { name: "RSA-OAEP" }
                 )
 
-                return { data_id: edk.data_id, eKey: arr2b64url(newDataKey) }
+                return { data_id: edk.data_id, eKey: arr2b64(newDataKey) }
               }))
 
             const updateRes = await this.service.giveAccess(userId, updatedKeys)
@@ -547,7 +569,7 @@ async function deriveAESKey(passphrase: string, salt: Uint8Array, exportable: bo
     {
       name: "PBKDF2",
       salt: salt,
-      iterations: 250000,
+      iterations: 100000,
       hash: "SHA-256",
     },
     passKey,
@@ -630,21 +652,24 @@ async function test(swap: boolean = false) {
   let pass2a = 'asd'
   let pass2b = 'fjsldjflkds'
 
-  if (swap) {
-    let temp: string = undefined
-    temp = pass1a
-    pass1a = pass1b
-    pass1b = temp
-  }
+  // if (swap) {
+  //   let temp: string = undefined
+  //   temp = pass1a
+  //   pass1a = pass1b
+  //   pass1b = temp
+  // }
 
   console.log('STARTING')
 
+  let { blindnetPassphrase: derived1a } = await BlindnetSdk.derivePasswords(pass1a)
+  let { blindnetPassphrase: derived2a } = await BlindnetSdk.derivePasswords(pass2a)
+
   let blindnet = BlindnetSdk.init(jwt1)
-  await blindnet.initUser(pass1a)
+  await blindnet.initUser(derived1a)
   console.log('initialized user 1')
-  await blindnet.initUser(pass1a)
+  await blindnet.initUser(derived1a)
   console.log('loaded user 1')
-  await blindnet.initUser(pass1a)
+  await blindnet.initUser(derived1a)
   console.log('loaded user 1 again')
 
   // blindnet = BlindnetSdk.init(jwt2)
@@ -658,25 +683,25 @@ async function test(swap: boolean = false) {
   console.log('encrypted', encData)
 
   blindnet = BlindnetSdk.init(jwt1)
-  await blindnet.initUser(pass1a)
+  await blindnet.initUser(derived1a)
   console.log('user 1 loaded')
   const decData = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
   blindnet = BlindnetSdk.init(jwt2)
-  await blindnet.initUser(pass2a)
+  await blindnet.initUser(derived2a)
   console.log('initialized user 2')
 
   blindnet = BlindnetSdk.init(jwt1)
-  await blindnet.initUser(pass1a)
+  await blindnet.initUser(derived1a)
   console.log('user 1 loaded')
 
   await blindnet.giveAccess('user1')
   console.log('gave access to user 2')
 
   blindnet = BlindnetSdk.init(jwt2)
-  await blindnet.initUser(pass2a)
+  await blindnet.initUser(derived2a)
   console.log('user 2 loaded')
   const decData2 = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))

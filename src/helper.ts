@@ -7,20 +7,19 @@ export function str2ab(str: string): ArrayBuffer {
   return buf;
 }
 
-function ab2str(ab: ArrayBuffer): string {
-  return String.fromCharCode.apply(null, new Uint16Array(ab));
+export function arr2str(ab: ArrayBuffer | Uint8Array): string {
+  return String.fromCharCode.apply(null, new Uint16Array(ab))
 }
 
-function b64url2str(b64str: string): string {
-  const unescaped =
-    (b64str + '==='.slice((b64str.length + 3) % 4))
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
 
-  return decodeURIComponent(atob(unescaped).split('').map(function (c) {
-    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-  }).join(''));
+export function b642arr(b64str: string): Uint8Array {
+  return Uint8Array.from(atob(b64str), c => c.charCodeAt(0))
 }
+
+export function arr2b64(byteArray): string {
+  return btoa(Array.from(new Uint8Array(byteArray)).map(val => String.fromCharCode(val)).join(''))
+}
+
 
 export function b64url2arr(b64str: string): Uint8Array {
   const unescaped =
@@ -38,7 +37,19 @@ export function arr2b64url(byteArray): string {
   }).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
 }
 
-export function decodeJwtPayload(jwt: string) {
+
+function b64url2str(b64str: string): string {
+  const unescaped =
+    (b64str + '==='.slice((b64str.length + 3) % 4))
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+
+  return decodeURIComponent(atob(unescaped).split('').map(function (c) {
+    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+  }).join(''));
+}
+
+function decodeJwtPayload(jwt: string) {
   try {
     return JSON.parse(b64url2str(jwt.split('.')[1]))
   } catch {
