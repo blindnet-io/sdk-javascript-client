@@ -1,6 +1,12 @@
 import { KeyStore, IndexedDbKeyStore } from './keyStore'
 import { BlindnetService, BlindnetServiceHttp } from './blindnetService'
 import {
+  UserNotInitializedError,
+  EncryptionError,
+  BlindnetServiceError,
+  PassphraseError
+} from './error'
+import {
   str2ab,
   b642arr,
   arr2b64,
@@ -101,14 +107,14 @@ class BlindnetSdk {
             true,
             ["decrypt", "unwrapKey"]
           ),
-          new Error('Wrong passphrase provided')
+          new PassphraseError('Wrong passphrase provided')
         )
 
         await this.keyStore.storeKeys(SK, PK, aesKey)
         return undefined
       }
       case 'Error': {
-        throw new Error('Fetching user data failed')
+        throw new BlindnetServiceError('Fetching user data failed')
       }
     }
   }
@@ -170,26 +176,28 @@ class BlindnetSdk {
             return { dataId: postKeysResp.data.data_id, encryptedData: encryptedDataWithIV, encryptedMetadata: encryptedMetadataWithIV }
           }
           case 'Failed': {
-            throw new Error('Could not upload the encrypted public keys')
+            throw new BlindnetServiceError('Could not upload the encrypted public keys')
           }
         }
       }
       case 'Failed': {
-        throw new Error('Fetching public keys failed')
+        throw new BlindnetServiceError('Fetching public keys failed')
       }
     }
   }
 
   async decrypt(dataId: string, encryptedData: Data, encryptedMetadata?: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
+
+    const SK = await rethrowPromise(
+      () => this.keyStore.getKey('private'),
+      new UserNotInitializedError('Private key not found')
+    )
+
     const eDataKeyResp = await this.service.getDataKey(dataId)
 
     switch (eDataKeyResp.type) {
       case 'Success': {
         const eDataKey = eDataKeyResp.data.key
-        const SK = await rethrowPromise(
-          () => this.keyStore.getKey('private'),
-          new Error('Private key not found. Reinitialize the current user.')
-        )
 
         const dataKey = await rethrowPromise(
           () => window.crypto.subtle.unwrapKey(
@@ -201,7 +209,7 @@ class BlindnetSdk {
             false,
             ['decrypt']
           ),
-          new Error(`Encrypted data key for data id ${dataId} could not be decrypted`)
+          new EncryptionError(`Encrypted data key for data id ${dataId} could not be decrypted`)
         )
 
         const data = await rethrowPromise(
@@ -213,7 +221,7 @@ class BlindnetSdk {
             dataKey,
             encryptedData.slice(12)
           ),
-          new Error(`Encrypted data with id ${dataId} could not be decrypted`)
+          new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
         )
 
         const metadata = await rethrowPromise(
@@ -231,13 +239,13 @@ class BlindnetSdk {
               :
               Promise.resolve(new ArrayBuffer(0))
           ,
-          new Error(`Encrypted metadata with id ${dataId} could not be decrypted`)
+          new EncryptionError(`Encrypted metadata with id ${dataId} could not be decrypted`)
         )
 
         return { data: data, metadata: metadata }
       }
       case 'Failed': {
-        throw new Error(`Fetching data key failed for data id ${dataId}`)
+        throw new BlindnetServiceError(`Fetching data key failed for data id ${dataId}`)
       }
     }
   }
@@ -245,11 +253,11 @@ class BlindnetSdk {
   async updatePassphrase(newPassphrase: string): Promise<void> {
     const SK = await rethrowPromise(
       () => this.keyStore.getKey('private'),
-      new Error('Private key not found. Reinitialize the current user.')
+      new UserNotInitializedError('Private key not found')
     )
     const curPassKey = await rethrowPromise(
       () => this.keyStore.getKey('derived'),
-      new Error('Passphrase derived key not found. Reinitialize the current user.')
+      new UserNotInitializedError('Passphrase derived key not found')
     )
 
     const salt = window.crypto.getRandomValues(new Uint8Array(16))
@@ -266,12 +274,18 @@ class BlindnetSdk {
         return undefined
       }
       case 'Failed': {
-        throw new Error('Could not upload the new keys')
+        throw new BlindnetServiceError('Could not upload the new keys')
       }
     }
   }
 
   async giveAccess(userId: string): Promise<void> {
+
+    const SK = await rethrowPromise(
+      () => this.keyStore.getKey('private'),
+      new UserNotInitializedError('Private key not found')
+    )
+
     const userPKResp = await this.service.getUsersPublicKey(userId)
 
     switch (userPKResp.type) {
@@ -281,10 +295,6 @@ class BlindnetSdk {
         switch (encryptedDataKeysResp.type) {
           case 'Success': {
             const encryptedDataKeys = encryptedDataKeysResp.data
-            const SK = await rethrowPromise(
-              () => this.keyStore.getKey('private'),
-              new Error('Private key not found. Reinitialize the current user.')
-            )
             const userPKspki = userPKResp.data.PK
 
             const userPK = await window.crypto.subtle.importKey(
@@ -308,7 +318,7 @@ class BlindnetSdk {
                     true,
                     ['decrypt']
                   ),
-                  new Error(`Could not decrypt a data key for data id ${edk.data_id}`)
+                  new EncryptionError(`Could not decrypt a data key for data id ${edk.data_id}`)
                 )
 
                 const newDataKey = await window.crypto.subtle.wrapKey(
@@ -328,17 +338,17 @@ class BlindnetSdk {
                 return undefined
               }
               case 'Failed': {
-                throw new Error(`Could not upload the encrypted data keys for a user ${userId}`)
+                throw new BlindnetServiceError(`Could not upload the encrypted data keys for a user ${userId}`)
               }
             }
           }
           case 'Failed': {
-            throw new Error(`Fetching the encrypted data keys of a user ${userId} failed`)
+            throw new BlindnetServiceError(`Fetching the encrypted data keys of a user ${userId} failed`)
           }
         }
       }
       case 'Failed': {
-        throw new Error(`Fetching the public key of a user ${userId} failed`)
+        throw new BlindnetServiceError(`Fetching the public key of a user ${userId} failed`)
       }
     }
   }
