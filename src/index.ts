@@ -7,10 +7,10 @@ import {
 } from 'idb-keyval'
 import {
   str2ab,
-  arr2str,
   b642arr,
   arr2b64,
-  concat
+  concat,
+  rethrowPromise
 } from './helper'
 
 type Data = Uint8Array | ArrayBuffer
@@ -322,23 +322,25 @@ class BlindnetSdk {
         const aesKey = await deriveAESKey(passphrase, b642arr(salt))
 
         const iv = new Uint8Array(12)
-        const SK = await window.crypto.subtle.unwrapKey(
-          "pkcs8",
-          b642arr(eSK),
-          aesKey,
-          { name: "AES-GCM", iv: iv },
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["decrypt", "unwrapKey"]
+
+        const SK = await rethrowPromise(
+          () => window.crypto.subtle.unwrapKey(
+            "pkcs8",
+            b642arr(eSK),
+            aesKey,
+            { name: "AES-GCM", iv: iv },
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            true,
+            ["decrypt", "unwrapKey"]
+          ),
+          new Error('Wrong passphrase provided')
         )
 
-        await this.keyStore.clear()
         await this.keyStore.storeKeys(SK, PK, aesKey)
         return undefined
       }
       case 'Error': {
-        // todo
-        throw new Error("")
+        throw new Error('Fetching user data failed')
       }
     }
   }
@@ -400,14 +402,12 @@ class BlindnetSdk {
             return { dataId: postKeysResp.data.data_id, encryptedData: encryptedDataWithIV, encryptedMetadata: encryptedMetadataWithIV }
           }
           case 'Failed': {
-            // todo
-            throw new Error("")
+            throw new Error('Could not upload the encrypted public keys')
           }
         }
       }
       case 'Failed': {
-        // todo
-        throw new Error("")
+        throw new Error('Fetching public keys failed')
       }
     }
   }
@@ -418,51 +418,71 @@ class BlindnetSdk {
     switch (eDataKeyResp.type) {
       case 'Success': {
         const eDataKey = eDataKeyResp.data.key
-        const SK = await this.keyStore.getKey('private')
-
-        const dataKey = await window.crypto.subtle.unwrapKey(
-          "jwk",
-          b642arr(eDataKey),
-          SK,
-          { name: "RSA-OAEP" },
-          { name: "AES-GCM", length: 256 },
-          false,
-          ['decrypt']
+        const SK = await rethrowPromise(
+          () => this.keyStore.getKey('private'),
+          new Error('Private key not found. Reinitialize the current user.')
         )
 
-        const data = await window.crypto.subtle.decrypt(
-          {
-            name: "AES-GCM",
-            iv: encryptedData.slice(0, 12),
-          },
-          dataKey,
-          encryptedData.slice(12)
+        const dataKey = await rethrowPromise(
+          () => window.crypto.subtle.unwrapKey(
+            "jwk",
+            b642arr(eDataKey),
+            SK,
+            { name: "RSA-OAEP" },
+            { name: "AES-GCM", length: 256 },
+            false,
+            ['decrypt']
+          ),
+          new Error(`Encrypted data key for data id ${dataId} could not be decrypted`)
         )
 
-        let metadata = new ArrayBuffer(0)
-        if (encryptedMetadata != undefined) {
-          metadata = await window.crypto.subtle.decrypt(
+        const data = await rethrowPromise(
+          () => window.crypto.subtle.decrypt(
             {
               name: "AES-GCM",
-              iv: encryptedMetadata.slice(0, 12),
+              iv: encryptedData.slice(0, 12),
             },
             dataKey,
-            encryptedMetadata.slice(12)
-          )
-        }
+            encryptedData.slice(12)
+          ),
+          new Error(`Encrypted data with id ${dataId} could not be decrypted`)
+        )
+
+        const metadata = await rethrowPromise(
+          () =>
+            (encryptedMetadata != undefined)
+              ?
+              window.crypto.subtle.decrypt(
+                {
+                  name: "AES-GCM",
+                  iv: encryptedMetadata.slice(0, 12),
+                },
+                dataKey,
+                encryptedMetadata.slice(12)
+              )
+              :
+              Promise.resolve(new ArrayBuffer(0))
+          ,
+          new Error(`Encrypted metadata with id ${dataId} could not be decrypted`)
+        )
 
         return { data: data, metadata: metadata }
       }
       case 'Failed': {
-        // todo
-        throw new Error("")
+        throw new Error(`Fetching data key failed for data id ${dataId}`)
       }
     }
   }
 
   async updatePassphrase(newPassphrase: string): Promise<void> {
-    const SK = await this.keyStore.getKey('private')
-    const curPassKey = await this.keyStore.getKey('derived')
+    const SK = await rethrowPromise(
+      () => this.keyStore.getKey('private'),
+      new Error('Private key not found. Reinitialize the current user.')
+    )
+    const curPassKey = await rethrowPromise(
+      () => this.keyStore.getKey('derived'),
+      new Error('Passphrase derived key not found. Reinitialize the current user.')
+    )
 
     const salt = window.crypto.getRandomValues(new Uint8Array(16))
     const newPassKey = await deriveAESKey(newPassphrase, salt)
@@ -478,8 +498,7 @@ class BlindnetSdk {
         return undefined
       }
       case 'Failed': {
-        // todo
-        throw new Error("")
+        throw new Error('Could not upload the new keys')
       }
     }
   }
@@ -494,7 +513,10 @@ class BlindnetSdk {
         switch (encryptedDataKeysResp.type) {
           case 'Success': {
             const encryptedDataKeys = encryptedDataKeysResp.data
-            const SK = await this.keyStore.getKey('private')
+            const SK = await rethrowPromise(
+              () => this.keyStore.getKey('private'),
+              new Error('Private key not found. Reinitialize the current user.')
+            )
             const userPKspki = userPKResp.data.PK
 
             const userPK = await window.crypto.subtle.importKey(
@@ -508,14 +530,17 @@ class BlindnetSdk {
             const updatedKeys = await Promise.all(
               encryptedDataKeysResp.data.map(async edk => {
 
-                const dataKey = await window.crypto.subtle.unwrapKey(
-                  "jwk",
-                  b642arr(edk.eKey),
-                  SK,
-                  { name: "RSA-OAEP" },
-                  { name: "AES-GCM", length: 256 },
-                  true,
-                  ['decrypt']
+                const dataKey = await rethrowPromise(
+                  () => window.crypto.subtle.unwrapKey(
+                    "jwk",
+                    b642arr(edk.eKey),
+                    SK,
+                    { name: "RSA-OAEP" },
+                    { name: "AES-GCM", length: 256 },
+                    true,
+                    ['decrypt']
+                  ),
+                  new Error(`Could not decrypt a data key for data id ${edk.data_id}`)
                 )
 
                 const newDataKey = await window.crypto.subtle.wrapKey(
@@ -535,20 +560,17 @@ class BlindnetSdk {
                 return undefined
               }
               case 'Failed': {
-                // todo
-                throw new Error("")
+                throw new Error(`Could not upload the encrypted data keys for a user ${userId}`)
               }
             }
           }
           case 'Failed': {
-            // todo
-            throw new Error("")
+            throw new Error(`Fetching the encrypted data keys of a user ${userId} failed`)
           }
         }
       }
       case 'Failed': {
-        // todo
-        throw new Error("")
+        throw new Error(`Fetching the public key of a user ${userId} failed`)
       }
     }
   }

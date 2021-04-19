@@ -64,3 +64,19 @@ export function concat(buffer1: ArrayBuffer, buffer2: ArrayBuffer): ArrayBuffer 
   tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
   return tmp.buffer;
 }
+
+export function rethrow<T>(f: () => T, e: Error): T {
+  try {
+    return f()
+  } catch {
+    throw e
+  }
+}
+
+export async function rethrowPromise<T>(f: () => Promise<T>, e: Error): Promise<T> {
+  try {
+    return await f()
+  } catch {
+    throw e
+  }
+}
