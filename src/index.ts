@@ -25,18 +25,20 @@ type Data = Uint8Array | ArrayBuffer
 class BlindnetSdk {
   private service: BlindnetService = undefined
   private keyStore: KeyStore = undefined
+  private endpoint: string = undefined
 
-  private constructor(jwt: string) {
-    this.service = new BlindnetServiceHttp(jwt)
+  private constructor(jwt: string, endpoint: string) {
+    this.service = new BlindnetServiceHttp(jwt, endpoint)
     this.keyStore = new IndexedDbKeyStore()
+    this.endpoint = endpoint
   }
 
-  static init(jwt: string) {
-    return new BlindnetSdk(jwt)
+  static init(jwt: string, endpoint: string = 'https://api.blindnet.io') {
+    return new BlindnetSdk(jwt, endpoint)
   }
 
   refreshJwt(jwt: string) {
-    this.service = new BlindnetServiceHttp(jwt)
+    this.service = new BlindnetServiceHttp(jwt, this.endpoint)
   }
 
   static async derivePasswords(password: string): Promise<{ blindnetPassphrase: string, appPassword: string }> {

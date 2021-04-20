@@ -24,11 +24,12 @@ interface BlindnetService {
 }
 
 class BlindnetServiceHttp implements BlindnetService {
-  private endpoint = 'http://localhost:9000'
+  private endpoint: string = undefined
   private jwt: string = undefined
 
-  constructor(jwt: string) {
+  constructor(jwt: string, endpoint: string) {
     this.jwt = jwt
+    this.endpoint = endpoint
   }
 
   initializeUser: (pk: ArrayBuffer, esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (pk, esk, salt) => {
