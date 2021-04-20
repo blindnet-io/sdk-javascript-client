@@ -14,10 +14,11 @@ import {
   rethrowPromise
 } from './helper'
 import {
-  generateIdentity,
+  generateRandomRSAKeyPair,
+  generateRandomECDSAKeyPair,
   deriveAESKey,
   generateRandomAESKey,
-  encryptSecretKey
+  wrapSecretKey
 } from './cryptoHelpers'
 
 type Data = Uint8Array | ArrayBuffer
@@ -87,10 +88,33 @@ class Blindnet {
 
     switch (getUserResp.type) {
       case 'UserNotFound': {
-        const { keyPair, aesKey, exportedPK, encryptedSK, salt } = await generateIdentity(passphrase)
-        // TODO: handle response, errors
-        const resp = await this.service.initializeUser(exportedPK, encryptedSK, salt)
-        await this.keyStore.storeKeys(keyPair.privateKey, keyPair.publicKey, aesKey)
+
+        const encryptionKeyPair = await generateRandomRSAKeyPair(true)
+        const signKeyPair = await generateRandomECDSAKeyPair(true)
+
+        const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
+        const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
+
+        const salt = window.crypto.getRandomValues(new Uint8Array(16))
+        const aesKey = await deriveAESKey(passphrase, salt)
+        // TODO: used just once
+        const iv = new Uint8Array(12)
+        const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
+
+        const signedJwt = await window.crypto.subtle.sign(
+          {
+            name: "ECDSA",
+            hash: { name: "SHA-384" },
+          },
+          signKeyPair.privateKey,
+          str2ab(this.service.jwt)
+        )
+
+        // not used in this use-case
+        const enc_signSK = new ArrayBuffer(0)
+
+        const resp = await this.service.initializeUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt)
+        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, aesKey)
         return undefined
       }
       case 'UserFound': {
@@ -275,7 +299,7 @@ class Blindnet {
     const newPassKey = await deriveAESKey(newPassphrase, salt)
     // used just once
     const iv = new Uint8Array(12)
-    const encryptedSK = await encryptSecretKey(SK, newPassKey, iv)
+    const encryptedSK = await wrapSecretKey(SK, newPassKey, iv)
 
     const updateUserResp = await this.service.updateUser(encryptedSK, salt)
 

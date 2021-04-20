@@ -13,22 +13,23 @@ type GetUserResponse =
 
 interface BlindnetService {
   endpoint: string
+  jwt: string
   protocolVersion: string
-  initializeUser: (pk: ArrayBuffer, esk: ArrayBuffer, salt: Uint8Array, id?: any) => Promise<ServiceResponse<void>>
-  getUserData: (id?: any) => Promise<GetUserResponse>
+  initializeUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>>
+  getUserData: () => Promise<GetUserResponse>
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<{ PK: string }>>
-  getGroupPublicKeys: (id?: any) => Promise<ServiceResponse<{ PK: string, user_id: string }[]>>
+  getGroupPublicKeys: () => Promise<ServiceResponse<{ PK: string, user_id: string }[]>>
   postEncryptedKeys: (encryptedKeys: { user_id: string, eKey: string }[]) => Promise<ServiceResponse<{ data_id: string }>>
-  getDataKey: (dataId: string, userId?: string) => Promise<ServiceResponse<{ key: string }>>
-  getDataKeys: (userId?: string) => Promise<ServiceResponse<{ data_id: string, eKey: string }[]>>
-  updateUser: (esk: ArrayBuffer, salt: Uint8Array, userId?: string) => Promise<ServiceResponse<void>>
+  getDataKey: (dataId: string) => Promise<ServiceResponse<{ key: string }>>
+  getDataKeys: () => Promise<ServiceResponse<{ data_id: string, eKey: string }[]>>
+  updateUser: (esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>>
   giveAccess: (userId: string, docKeys: { data_id: string, eKey: string }[]) => Promise<ServiceResponse<void>>
 }
 
 class BlindnetServiceHttp implements BlindnetService {
   endpoint: string = undefined
   protocolVersion: string = undefined
-  private jwt: string = undefined
+  jwt: string = undefined
 
   constructor(jwt: string, endpoint: string, protocolVersion: string) {
     this.jwt = jwt
@@ -36,30 +37,34 @@ class BlindnetServiceHttp implements BlindnetService {
     this.protocolVersion = protocolVersion
   }
 
-  initializeUser: (pk: ArrayBuffer, esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (pk, esk, salt) => {
-    const resp =
-      await fetch(`${this.endpoint}/v${this.protocolVersion}/initUser`, {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          jwt: this.jwt,
-          PK: arr2b64(pk),
-          eSK: arr2b64(esk),
-          salt: arr2b64(salt)
+  initializeUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>> =
+    async (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt) => {
+      const resp =
+        await fetch(`${this.endpoint}/v${this.protocolVersion}/initUser`, {
+          method: 'POST',
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jwt: this.jwt,
+            encryption_public_key: arr2b64(ePK),
+            sign_public_key: arr2b64(sPK),
+            encrypted_encryption_private_key: arr2b64(enc_eSK),
+            encrypted_sing_private_key: arr2b64(enc_signSK),
+            salt: arr2b64(salt),
+            signedJwt: arr2b64(signedJwt)
+          })
         })
-      })
 
-    // TODO: repeating
-    switch (resp.status) {
-      case 200:
-        return { type: 'Success', data: undefined }
-      default:
-        return { type: 'Failed' }
+      // TODO: repeating
+      switch (resp.status) {
+        case 200:
+          return { type: 'Success', data: undefined }
+        default:
+          return { type: 'Failed' }
+      }
     }
-  }
 
   getUserData: () => Promise<GetUserResponse> = async () => {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getUser`, {

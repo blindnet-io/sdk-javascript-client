@@ -52,7 +52,21 @@ async function generateRandomRSAKeyPair(exportable: boolean = false): Promise<Cr
   return keyPair
 }
 
-async function encryptSecretKey(SK: CryptoKey, aesKey: CryptoKey, iv: Uint8Array): Promise<ArrayBuffer> {
+async function generateRandomECDSAKeyPair(exportable: boolean = false): Promise<CryptoKeyPair> {
+
+  const keyPair = await window.crypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-384"
+    },
+    exportable,
+    ["sign"]
+  );
+
+  return keyPair
+}
+
+async function wrapSecretKey(SK: CryptoKey, aesKey: CryptoKey, iv: Uint8Array): Promise<ArrayBuffer> {
   const wrappedSk = await window.crypto.subtle.wrapKey(
     "pkcs8",
     SK,
@@ -66,23 +80,10 @@ async function encryptSecretKey(SK: CryptoKey, aesKey: CryptoKey, iv: Uint8Array
   return wrappedSk
 }
 
-async function generateIdentity(passphrase: string) {
-  const keyPair = await generateRandomRSAKeyPair(true)
-
-  const exportedPK = await window.crypto.subtle.exportKey("spki", keyPair.publicKey)
-
-  const salt = window.crypto.getRandomValues(new Uint8Array(16))
-  const aesKey = await deriveAESKey(passphrase, salt)
-  // used just once
-  const iv = new Uint8Array(12)
-  const encryptedSK = await encryptSecretKey(keyPair.privateKey, aesKey, iv)
-
-  return { keyPair, aesKey, exportedPK, encryptedSK, salt }
-}
-
 export {
-  generateIdentity,
-  encryptSecretKey,
+  generateRandomRSAKeyPair,
+  generateRandomECDSAKeyPair,
+  wrapSecretKey,
   generateRandomAESKey,
   deriveAESKey
 }
