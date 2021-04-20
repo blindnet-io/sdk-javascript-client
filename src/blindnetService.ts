@@ -57,13 +57,7 @@ class BlindnetServiceHttp implements BlindnetService {
           })
         })
 
-      // TODO: repeating
-      switch (resp.status) {
-        case 200:
-          return { type: 'Success', data: undefined }
-        default:
-          return { type: 'Failed' }
-      }
+      return await handleResponse<void>(resp, _ => undefined)
     }
 
   getUserData: () => Promise<ServiceResponse<GetUserResponse>> = async () => {
@@ -74,27 +68,23 @@ class BlindnetServiceHttp implements BlindnetService {
       body: JSON.stringify({ jwt: this.jwt })
     })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        if (data.type == 'UserNotFound')
-          return { type: 'Success', data: { type: 'UserNotFound' } }
-        else
+    function mapping(data: any): GetUserResponse {
+      switch (data.type) {
+        case 'UserNotFound':
+          return { type: 'UserNotFound' }
+        case 'UserFound':
           return {
-            type: 'Success', data: {
-              type: 'UserFound', userData: {
-                PK: data.userData.encryption_public_key,
-                eSK: data.userData.encrypted_encryption_secret_key,
-                salt: data.userData.salt
-              }
+            type: 'UserFound',
+            userData: {
+              PK: data.userData.encryption_public_key,
+              eSK: data.userData.encrypted_encryption_secret_key,
+              salt: data.userData.salt
             }
           }
       }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
     }
+
+    return await handleResponse<GetUserResponse>(resp, mapping)
   }
 
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<{ PK: string }>> = async (userId) => {
@@ -105,16 +95,7 @@ class BlindnetServiceHttp implements BlindnetService {
       body: JSON.stringify({ jwt: this.jwt, user_id: userId })
     })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        return { type: 'Success', data: data }
-      }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<{ PK: string }>(resp, x => x)
   }
 
   getGroupPublicKeys: () => Promise<ServiceResponse<{ PK: string, user_id: string }[]>> = async () => {
@@ -126,16 +107,7 @@ class BlindnetServiceHttp implements BlindnetService {
         body: JSON.stringify({ jwt: this.jwt })
       })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        return { type: 'Success', data }
-      }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<{ PK: string, user_id: string }[]>(resp, x => x)
   }
 
   postEncryptedKeys: (encryptedKeys: { user_id: string, eKey: string }[]) => Promise<ServiceResponse<{ data_id: string }>> = async (encryptedKeys) => {
@@ -146,16 +118,7 @@ class BlindnetServiceHttp implements BlindnetService {
       body: JSON.stringify(encryptedKeys)
     })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        return { type: 'Success', data: data }
-      }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<{ data_id: string }>(resp, x => x)
   }
 
   getDataKey: (dataId: string) => Promise<ServiceResponse<{ key: string }>> = async (dataId) => {
@@ -166,16 +129,7 @@ class BlindnetServiceHttp implements BlindnetService {
       body: JSON.stringify({ jwt: this.jwt, data_id: dataId })
     })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        return { type: 'Success', data: data }
-      }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<{ key: string }>(resp, x => x)
   }
 
   getDataKeys: () => Promise<ServiceResponse<{ data_id: string, eKey: string }[]>> = async () => {
@@ -186,16 +140,7 @@ class BlindnetServiceHttp implements BlindnetService {
       body: JSON.stringify({ jwt: this.jwt })
     })
 
-    switch (resp.status) {
-      case 200: {
-        const data = await resp.json()
-        return { type: 'Success', data: data }
-      }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<{ data_id: string, eKey: string }[]>(resp, x => x)
   }
 
   updateUser: (esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (esk, salt) => {
@@ -212,14 +157,7 @@ class BlindnetServiceHttp implements BlindnetService {
       })
     })
 
-    switch (resp.status) {
-      case 200:
-        return { type: 'Success', data: undefined }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
-    }
+    return await handleResponse<void>(resp, _ => undefined)
   }
 
   giveAccess: (userId: string, docKeys: { data_id: string, eKey: string }[]) => Promise<ServiceResponse<void>> = async (userId, docKeys) => {
@@ -236,14 +174,21 @@ class BlindnetServiceHttp implements BlindnetService {
       })
     })
 
-    switch (resp.status) {
-      case 200:
-        return { type: 'Success', data: undefined }
-      case 401:
-        return { type: 'AuthenticationNeeded' }
-      default:
-        return { type: 'Failed' }
+    return await handleResponse<void>(resp, _ => undefined)
+  }
+}
+
+async function handleResponse<T>(resp: Response, f: (_: any) => T): Promise<ServiceResponse<T>> {
+  switch (resp.status) {
+    case 200: {
+      // TODO: handle parsing errors
+      const body = await resp.json()
+      return { type: 'Success', data: f(body) }
     }
+    case 401:
+      return { type: 'AuthenticationNeeded' }
+    default:
+      return { type: 'Failed' }
   }
 }
 
