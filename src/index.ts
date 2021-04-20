@@ -4,7 +4,8 @@ import {
   UserNotInitializedError,
   EncryptionError,
   BlindnetServiceError,
-  PassphraseError
+  PassphraseError,
+  AuthenticationError
 } from './error'
 import {
   str2ab,
@@ -87,68 +88,75 @@ class Blindnet {
     const getUserResp = await this.service.getUserData()
 
     switch (getUserResp.type) {
-      case 'UserNotFound': {
+      case 'Success': {
+        switch (getUserResp.data.type) {
+          case 'UserNotFound': {
 
-        const encryptionKeyPair = await generateRandomRSAKeyPair(true)
-        const signKeyPair = await generateRandomECDSAKeyPair(true)
+            const encryptionKeyPair = await generateRandomRSAKeyPair(true)
+            const signKeyPair = await generateRandomECDSAKeyPair(true)
 
-        const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
-        const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
+            const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
+            const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
 
-        const salt = window.crypto.getRandomValues(new Uint8Array(16))
-        const aesKey = await deriveAESKey(passphrase, salt)
-        // TODO: used just once
-        const iv = new Uint8Array(12)
-        const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
+            const salt = window.crypto.getRandomValues(new Uint8Array(16))
+            const aesKey = await deriveAESKey(passphrase, salt)
+            // TODO: used just once
+            const iv = new Uint8Array(12)
+            const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
 
-        const signedJwt = await window.crypto.subtle.sign(
-          {
-            name: "ECDSA",
-            hash: { name: "SHA-384" },
-          },
-          signKeyPair.privateKey,
-          str2ab(this.service.jwt)
-        )
+            const signedJwt = await window.crypto.subtle.sign(
+              {
+                name: "ECDSA",
+                hash: { name: "SHA-384" },
+              },
+              signKeyPair.privateKey,
+              str2ab(this.service.jwt)
+            )
 
-        // not used in this use-case
-        const enc_signSK = new ArrayBuffer(0)
+            // not used in this use-case
+            const enc_signSK = new ArrayBuffer(0)
 
-        const resp = await this.service.initializeUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt)
-        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, aesKey)
-        return undefined
+            const resp = await this.service.initializeUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt)
+            await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, aesKey)
+            return undefined
+          }
+          case 'UserFound': {
+            const { PK: PKspki, eSK, salt } = getUserResp.data.userData
+
+            const PK = await window.crypto.subtle.importKey(
+              "spki",
+              b642arr(PKspki),
+              { name: "RSA-OAEP", hash: "SHA-256" },
+              true,
+              ["encrypt"]
+            )
+
+            const aesKey = await deriveAESKey(passphrase, b642arr(salt))
+
+            const iv = new Uint8Array(12)
+
+            const SK = await rethrowPromise(
+              () => window.crypto.subtle.unwrapKey(
+                "pkcs8",
+                b642arr(eSK),
+                aesKey,
+                { name: "AES-GCM", iv: iv },
+                { name: "RSA-OAEP", hash: "SHA-256" },
+                true,
+                ["decrypt", "unwrapKey"]
+              ),
+              new PassphraseError('Wrong passphrase provided')
+            )
+
+            await this.keyStore.storeKeys(SK, PK, aesKey)
+            return undefined
+          }
+        }
       }
-      case 'UserFound': {
-        const { PK: PKspki, eSK, salt } = getUserResp.userData
-
-        const PK = await window.crypto.subtle.importKey(
-          "spki",
-          b642arr(PKspki),
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["encrypt"]
-        )
-
-        const aesKey = await deriveAESKey(passphrase, b642arr(salt))
-
-        const iv = new Uint8Array(12)
-
-        const SK = await rethrowPromise(
-          () => window.crypto.subtle.unwrapKey(
-            "pkcs8",
-            b642arr(eSK),
-            aesKey,
-            { name: "AES-GCM", iv: iv },
-            { name: "RSA-OAEP", hash: "SHA-256" },
-            true,
-            ["decrypt", "unwrapKey"]
-          ),
-          new PassphraseError('Wrong passphrase provided')
-        )
-
-        await this.keyStore.storeKeys(SK, PK, aesKey)
-        return undefined
+      case 'AuthenticationNeeded': {
+        throw new AuthenticationError('Please generate a valid JWT')
       }
-      case 'Error': {
+      case 'Failed': {
         throw new BlindnetServiceError('Fetching user data failed')
       }
     }
@@ -215,6 +223,9 @@ class Blindnet {
           }
         }
       }
+      case 'AuthenticationNeeded': {
+        throw new AuthenticationError('Please generate a valid JWT')
+      }
       case 'Failed': {
         throw new BlindnetServiceError('Fetching public keys failed')
       }
@@ -279,6 +290,9 @@ class Blindnet {
 
         return { data: data, metadata: metadata }
       }
+      case 'AuthenticationNeeded': {
+        throw new AuthenticationError('Please generate a valid JWT')
+      }
       case 'Failed': {
         throw new BlindnetServiceError(`Fetching data key failed for data id ${dataId}`)
       }
@@ -307,6 +321,9 @@ class Blindnet {
       case 'Success': {
         await this.keyStore.storeKey('derived', newPassKey)
         return undefined
+      }
+      case 'AuthenticationNeeded': {
+        throw new AuthenticationError('Please generate a valid JWT')
       }
       case 'Failed': {
         throw new BlindnetServiceError('Could not upload the new keys')
@@ -381,6 +398,9 @@ class Blindnet {
             throw new BlindnetServiceError(`Fetching the encrypted data keys of a user ${userId} failed`)
           }
         }
+      }
+      case 'AuthenticationNeeded': {
+        throw new AuthenticationError('Please generate a valid JWT')
       }
       case 'Failed': {
         throw new BlindnetServiceError(`Fetching the public key of a user ${userId} failed`)

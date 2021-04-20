@@ -1,3 +1,10 @@
+class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthenticationError"
+  }
+}
+
 class UserNotInitializedError extends Error {
   constructor(message: string) {
     super(message);
@@ -27,6 +34,7 @@ class PassphraseError extends Error {
 }
 
 export {
+  AuthenticationError,
   UserNotInitializedError,
   EncryptionError,
   BlindnetServiceError,

@@ -4,19 +4,19 @@ import {
 
 type ServiceResponse<T> =
   | { type: 'Success', data: T }
+  | { type: 'AuthenticationNeeded' }
   | { type: 'Failed' }
 
 type GetUserResponse =
   | { type: 'UserFound', userData: { PK: string, eSK: string, salt: string } }
   | { type: 'UserNotFound' }
-  | { type: 'Error' }
 
 interface BlindnetService {
   endpoint: string
   jwt: string
   protocolVersion: string
   initializeUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>>
-  getUserData: () => Promise<GetUserResponse>
+  getUserData: () => Promise<ServiceResponse<GetUserResponse>>
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<{ PK: string }>>
   getGroupPublicKeys: () => Promise<ServiceResponse<{ PK: string, user_id: string }[]>>
   postEncryptedKeys: (encryptedKeys: { user_id: string, eKey: string }[]) => Promise<ServiceResponse<{ data_id: string }>>
@@ -66,7 +66,7 @@ class BlindnetServiceHttp implements BlindnetService {
       }
     }
 
-  getUserData: () => Promise<GetUserResponse> = async () => {
+  getUserData: () => Promise<ServiceResponse<GetUserResponse>> = async () => {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getUser`, {
       method: 'POST',
       mode: 'cors',
@@ -77,12 +77,23 @@ class BlindnetServiceHttp implements BlindnetService {
     switch (resp.status) {
       case 200: {
         const data = await resp.json()
-        return { type: 'UserFound', userData: data }
+        if (data.type == 'UserNotFound')
+          return { type: 'Success', data: { type: 'UserNotFound' } }
+        else
+          return {
+            type: 'Success', data: {
+              type: 'UserFound', userData: {
+                PK: data.userData.encryption_public_key,
+                eSK: data.userData.encrypted_encryption_secret_key,
+                salt: data.userData.salt
+              }
+            }
+          }
       }
-      case 404:
-        return { type: 'UserNotFound' }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
-        return { type: 'Error' }
+        return { type: 'Failed' }
     }
   }
 
@@ -99,6 +110,8 @@ class BlindnetServiceHttp implements BlindnetService {
         const data = await resp.json()
         return { type: 'Success', data: data }
       }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -118,6 +131,8 @@ class BlindnetServiceHttp implements BlindnetService {
         const data = await resp.json()
         return { type: 'Success', data }
       }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -136,6 +151,8 @@ class BlindnetServiceHttp implements BlindnetService {
         const data = await resp.json()
         return { type: 'Success', data: data }
       }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -154,6 +171,8 @@ class BlindnetServiceHttp implements BlindnetService {
         const data = await resp.json()
         return { type: 'Success', data: data }
       }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -172,6 +191,8 @@ class BlindnetServiceHttp implements BlindnetService {
         const data = await resp.json()
         return { type: 'Success', data: data }
       }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -194,6 +215,8 @@ class BlindnetServiceHttp implements BlindnetService {
     switch (resp.status) {
       case 200:
         return { type: 'Success', data: undefined }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
@@ -216,6 +239,8 @@ class BlindnetServiceHttp implements BlindnetService {
     switch (resp.status) {
       case 200:
         return { type: 'Success', data: undefined }
+      case 401:
+        return { type: 'AuthenticationNeeded' }
       default:
         return { type: 'Failed' }
     }
