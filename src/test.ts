@@ -1,4 +1,4 @@
-import { BlindnetSdk } from './index'
+import { Blindnet } from './index'
 import { str2ab } from './helper'
 
 export async function asd(n: number) {
@@ -26,10 +26,10 @@ async function test(swap: boolean = false) {
 
   console.log('STARTING')
 
-  let { blindnetPassphrase: derived1a } = await BlindnetSdk.derivePasswords(pass1a)
-  let { blindnetPassphrase: derived2a } = await BlindnetSdk.derivePasswords(pass2a)
+  let { blindnetPassphrase: derived1a } = await Blindnet.derivePasswords(pass1a)
+  let { blindnetPassphrase: derived2a } = await Blindnet.derivePasswords(pass2a)
 
-  let blindnet = BlindnetSdk.init(jwt1)
+  let blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
   await blindnet.initUser(derived1a)
   console.log('initialized user 1')
   await blindnet.initUser(derived1a)
@@ -37,35 +37,35 @@ async function test(swap: boolean = false) {
   await blindnet.initUser(derived1a)
   console.log('loaded user 1 again')
 
-  // blindnet = BlindnetSdk.init(jwt2)
+  // blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
   // await blindnet.initUser(pass2a)
   // console.log('initialized user 2')
 
-  blindnet = BlindnetSdk.init(otjwt1)
+  blindnet = Blindnet.init(otjwt1, 'http://localhost:9000')
   console.log('started unregistered user')
 
   const encData = await blindnet.encrypt(str2ab('sup bro?'), str2ab('{ "name": "asd" }'))
   console.log('encrypted', encData)
 
-  blindnet = BlindnetSdk.init(jwt1)
+  blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
   await blindnet.initUser(derived1a)
   console.log('user 1 loaded')
   const decData = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
-  blindnet = BlindnetSdk.init(jwt2)
+  blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
   await blindnet.initUser(derived2a)
   console.log('initialized user 2')
 
-  blindnet = BlindnetSdk.init(jwt1)
+  blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
   await blindnet.initUser(derived1a)
   console.log('user 1 loaded')
 
   await blindnet.giveAccess('user1')
   console.log('gave access to user 2')
 
-  blindnet = BlindnetSdk.init(jwt2)
+  blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
   await blindnet.initUser(derived2a)
   console.log('user 2 loaded')
   const decData2 = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)

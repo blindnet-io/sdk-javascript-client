@@ -22,23 +22,32 @@ import {
 
 type Data = Uint8Array | ArrayBuffer
 
-class BlindnetSdk {
+class Blindnet {
   private service: BlindnetService = undefined
   private keyStore: KeyStore = undefined
-  private endpoint: string = undefined
+  private static protocolVersion: string = "1.0"
 
-  private constructor(jwt: string, endpoint: string) {
-    this.service = new BlindnetServiceHttp(jwt, endpoint)
-    this.keyStore = new IndexedDbKeyStore()
-    this.endpoint = endpoint
+  private constructor(service: BlindnetService, keyStore: KeyStore) {
+    this.service = service
+    this.keyStore = keyStore
+  }
+
+  static initTest(service: BlindnetService, keyStore: KeyStore) {
+    return new Blindnet(service, keyStore)
   }
 
   static init(jwt: string, endpoint: string = 'https://api.blindnet.io') {
-    return new BlindnetSdk(jwt, endpoint)
+    const service = new BlindnetServiceHttp(jwt, endpoint, Blindnet.protocolVersion)
+    const keyStore = new IndexedDbKeyStore()
+    return new Blindnet(service, keyStore)
+  }
+
+  static clearKeys() {
+    (new IndexedDbKeyStore()).clear()
   }
 
   refreshJwt(jwt: string) {
-    this.service = new BlindnetServiceHttp(jwt, this.endpoint)
+    this.service = new BlindnetServiceHttp(jwt, this.service.endpoint, Blindnet.protocolVersion)
   }
 
   static async derivePasswords(password: string): Promise<{ blindnetPassphrase: string, appPassword: string }> {
@@ -357,7 +366,7 @@ class BlindnetSdk {
 }
 
 export {
-  BlindnetSdk
+  Blindnet
 }
 
 import { asd } from './test'
