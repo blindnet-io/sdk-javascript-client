@@ -1,4 +1,4 @@
-export function str2ab(str: string): ArrayBuffer {
+function str2ab(str: string): ArrayBuffer {
   var buf = new ArrayBuffer(str.length * 2);
   var bufView = new Uint16Array(buf);
   for (var i = 0, strLen = str.length; i < strLen; i++) {
@@ -7,21 +7,21 @@ export function str2ab(str: string): ArrayBuffer {
   return buf;
 }
 
-export function arr2str(ab: ArrayBuffer | Uint8Array): string {
+function arr2str(ab: ArrayBuffer | Uint8Array): string {
   return String.fromCharCode.apply(null, new Uint16Array(ab))
 }
 
 
-export function b642arr(b64str: string): Uint8Array {
+function b642arr(b64str: string): Uint8Array {
   return Uint8Array.from(atob(b64str), c => c.charCodeAt(0))
 }
 
-export function arr2b64(byteArray): string {
+function arr2b64(byteArray): string {
   return btoa(Array.from(new Uint8Array(byteArray)).map(val => String.fromCharCode(val)).join(''))
 }
 
 
-export function b64url2arr(b64str: string): Uint8Array {
+function b64url2arr(b64str: string): Uint8Array {
   const unescaped =
     (b64str + '==='.slice((b64str.length + 3) % 4))
       .replace(/-/g, '+')
@@ -31,7 +31,7 @@ export function b64url2arr(b64str: string): Uint8Array {
 }
 
 // TODO: optimize
-export function arr2b64url(byteArray): string {
+function arr2b64url(byteArray): string {
   return btoa(Array.from(new Uint8Array(byteArray)).map(val => {
     return String.fromCharCode(val)
   }).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
@@ -57,15 +57,31 @@ function decodeJwtPayload(jwt: string) {
   }
 }
 
-// TODO: optimize
-export function concat(buffer1: ArrayBuffer, buffer2: ArrayBuffer): ArrayBuffer {
+// TODO: optimize and unify
+function concat(buffer1: ArrayBuffer | Uint8Array, buffer2: ArrayBuffer | Uint8Array): ArrayBuffer {
   var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
-  tmp.set(new Uint8Array(buffer1), 0);
-  tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
+  tmp.set((buffer1 instanceof ArrayBuffer) ? new Uint8Array(buffer1) : buffer1, 0);
+  tmp.set((buffer2 instanceof ArrayBuffer) ? new Uint8Array(buffer2) : buffer2, buffer1.byteLength);
+  return tmp.buffer;
+}
+function concat3(buffer1: ArrayBuffer | Uint8Array, buffer2: ArrayBuffer | Uint8Array, buffer3: ArrayBuffer | Uint8Array): ArrayBuffer {
+  var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength + buffer3.byteLength);
+  tmp.set((buffer1 instanceof ArrayBuffer) ? new Uint8Array(buffer1) : buffer1, 0);
+  tmp.set((buffer2 instanceof ArrayBuffer) ? new Uint8Array(buffer2) : buffer2, buffer1.byteLength);
+  tmp.set((buffer3 instanceof ArrayBuffer) ? new Uint8Array(buffer3) : buffer3, buffer1.byteLength + buffer2.byteLength);
   return tmp.buffer;
 }
 
-export function rethrow<T>(f: () => T, e: Error): T {
+function getInt64Bytes(x: number) {
+  let y = Math.floor(x / 2 ** 32);
+  return [y, (y << 8), (y << 16), (y << 24), x, (x << 8), (x << 16), (x << 24)].map(z => z >>> 24)
+}
+
+function intFromBytes(byteArr: number[]) {
+  return byteArr.reduce((a, c, i) => a + c * 2 ** (56 - i * 8), 0)
+}
+
+function rethrow<T>(f: () => T, e: Error): T {
   try {
     return f()
   } catch {
@@ -73,10 +89,25 @@ export function rethrow<T>(f: () => T, e: Error): T {
   }
 }
 
-export async function rethrowPromise<T>(f: () => Promise<T>, e: Error): Promise<T> {
+async function rethrowPromise<T>(f: () => Promise<T>, e: Error): Promise<T> {
   try {
     return await f()
   } catch {
     throw e
   }
+}
+
+export {
+  str2ab,
+  arr2str,
+  b642arr,
+  arr2b64,
+  b64url2arr,
+  arr2b64url,
+  concat,
+  concat3,
+  getInt64Bytes,
+  intFromBytes,
+  rethrow,
+  rethrowPromise
 }

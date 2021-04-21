@@ -12,6 +12,9 @@ import {
   b642arr,
   arr2b64,
   concat,
+  concat3,
+  getInt64Bytes,
+  intFromBytes,
   rethrowPromise
 } from './helper'
 import {
@@ -162,7 +165,7 @@ class Blindnet {
     }
   }
 
-  async encrypt(data: Data, metadata?: Data): Promise<{ dataId: string, encryptedData: ArrayBuffer, encryptedMetadata: ArrayBuffer }> {
+  async encrypt(data: Data, metadata?: Data): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
 
     const groupPKsResp = await this.service.getGroupPublicKeys()
 
@@ -171,25 +174,16 @@ class Blindnet {
         const users = groupPKsResp.data
 
         const dataKey = await generateRandomAESKey(true)
-        const iv1 = window.crypto.getRandomValues(new Uint8Array(12))
+        const iv = window.crypto.getRandomValues(new Uint8Array(12))
+
+        const metadataLenBytes = getInt64Bytes(metadata.byteLength)
+        const allData = concat3(new Uint8Array(metadataLenBytes), metadata, data)
 
         const encryptedData = await window.crypto.subtle.encrypt(
-          { name: "AES-GCM", iv: iv1 },
+          { name: "AES-GCM", iv: iv },
           dataKey,
-          data
+          allData
         )
-        const encryptedDataWithIV = concat(iv1.buffer, encryptedData)
-
-        let encryptedMetadataWithIV = new ArrayBuffer(0)
-        if (metadata != undefined) {
-          const iv2 = window.crypto.getRandomValues(new Uint8Array(12))
-          const encryptedMetadata = await window.crypto.subtle.encrypt(
-            { name: "AES-GCM", iv: iv2 },
-            dataKey,
-            metadata
-          )
-          encryptedMetadataWithIV = concat(iv2.buffer, encryptedMetadata)
-        }
 
         const encryptedUserKeys = await Promise.all(
           users.map(async user => {
@@ -216,7 +210,7 @@ class Blindnet {
 
         switch (postKeysResp.type) {
           case 'Success': {
-            return { dataId: postKeysResp.data.data_id, encryptedData: encryptedDataWithIV, encryptedMetadata: encryptedMetadataWithIV }
+            return { dataId: postKeysResp.data.data_id, encryptedData: concat(iv.buffer, encryptedData) }
           }
           case 'Failed': {
             throw new BlindnetServiceError('Could not upload the encrypted public keys')
@@ -232,7 +226,7 @@ class Blindnet {
     }
   }
 
-  async decrypt(dataId: string, encryptedData: Data, encryptedMetadata?: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
+  async decrypt(dataId: string, encryptedData: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
 
     const SK = await rethrowPromise(
       () => this.keyStore.getKey('private'),
@@ -258,7 +252,7 @@ class Blindnet {
           new EncryptionError(`Encrypted data key for data id ${dataId} could not be decrypted`)
         )
 
-        const data = await rethrowPromise(
+        const allData = await rethrowPromise(
           () => window.crypto.subtle.decrypt(
             {
               name: "AES-GCM",
@@ -270,23 +264,9 @@ class Blindnet {
           new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
         )
 
-        const metadata = await rethrowPromise(
-          () =>
-            (encryptedMetadata != undefined)
-              ?
-              window.crypto.subtle.decrypt(
-                {
-                  name: "AES-GCM",
-                  iv: encryptedMetadata.slice(0, 12),
-                },
-                dataKey,
-                encryptedMetadata.slice(12)
-              )
-              :
-              Promise.resolve(new ArrayBuffer(0))
-          ,
-          new EncryptionError(`Encrypted metadata with id ${dataId} could not be decrypted`)
-        )
+        const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
+        const metadata = allData.slice(8, 8 + metadataLen)
+        const data = allData.slice(8 + metadataLen)
 
         return { data: data, metadata: metadata }
       }

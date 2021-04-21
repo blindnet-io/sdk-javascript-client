@@ -50,7 +50,7 @@ async function test(swap: boolean = false) {
   blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
   await blindnet.initUser(derived1a)
   console.log('user 1 loaded')
-  const decData = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)
+  const decData = await blindnet.decrypt(encData.dataId, encData.encryptedData)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
@@ -68,7 +68,7 @@ async function test(swap: boolean = false) {
   blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
   await blindnet.initUser(derived2a)
   console.log('user 2 loaded')
-  const decData2 = await blindnet.decrypt(encData.dataId, encData.encryptedData, encData.encryptedMetadata)
+  const decData2 = await blindnet.decrypt(encData.dataId, encData.encryptedData)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
