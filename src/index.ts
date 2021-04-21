@@ -145,7 +145,7 @@ class Blindnet {
                 true,
                 ["decrypt", "unwrapKey"]
               ),
-              new PassphraseError('Wrong passphrase provided')
+              new PassphraseError()
             )
 
             await this.keyStore.storeKeys(SK, PK, aesKey)
@@ -154,7 +154,7 @@ class Blindnet {
         }
       }
       case 'AuthenticationNeeded': {
-        throw new AuthenticationError('Please generate a valid JWT')
+        throw new AuthenticationError()
       }
       case 'Failed': {
         throw new BlindnetServiceError('Fetching user data failed')
@@ -224,7 +224,7 @@ class Blindnet {
         }
       }
       case 'AuthenticationNeeded': {
-        throw new AuthenticationError('Please generate a valid JWT')
+        throw new AuthenticationError()
       }
       case 'Failed': {
         throw new BlindnetServiceError('Fetching public keys failed')
@@ -291,7 +291,7 @@ class Blindnet {
         return { data: data, metadata: metadata }
       }
       case 'AuthenticationNeeded': {
-        throw new AuthenticationError('Please generate a valid JWT')
+        throw new AuthenticationError()
       }
       case 'Failed': {
         throw new BlindnetServiceError(`Fetching data key failed for data id ${dataId}`)
@@ -323,7 +323,7 @@ class Blindnet {
         return undefined
       }
       case 'AuthenticationNeeded': {
-        throw new AuthenticationError('Please generate a valid JWT')
+        throw new AuthenticationError()
       }
       case 'Failed': {
         throw new BlindnetServiceError('Could not upload the new keys')
@@ -400,7 +400,7 @@ class Blindnet {
         }
       }
       case 'AuthenticationNeeded': {
-        throw new AuthenticationError('Please generate a valid JWT')
+        throw new AuthenticationError()
       }
       case 'Failed': {
         throw new BlindnetServiceError(`Fetching the public key of a user ${userId} failed`)
