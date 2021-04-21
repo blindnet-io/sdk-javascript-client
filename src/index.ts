@@ -47,7 +47,7 @@ class Blindnet {
     return new Blindnet(service, keyStore)
   }
 
-  static clearKeys() {
+  static logout() {
     (new IndexedDbKeyStore()).clear()
   }
 
@@ -85,7 +85,7 @@ class Blindnet {
     return { blindnetPassphrase: arr2b64(blindnetPassBits), appPassword: arr2b64(appPassBits) }
   }
 
-  async initUser(passphrase: string): Promise<void> {
+  async login(passphrase: string): Promise<void> {
     await this.keyStore.clear()
 
     const getUserResp = await this.service.getUserData()

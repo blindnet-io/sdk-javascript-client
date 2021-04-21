@@ -30,15 +30,15 @@ async function test(swap: boolean = false) {
   let { blindnetPassphrase: derived2a } = await Blindnet.derivePasswords(pass2a)
 
   let blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
-  await blindnet.initUser(derived1a)
+  await blindnet.login(derived1a)
   console.log('initialized user 1')
-  await blindnet.initUser(derived1a)
+  await blindnet.login(derived1a)
   console.log('loaded user 1')
-  await blindnet.initUser(derived1a)
+  await blindnet.login(derived1a)
   console.log('loaded user 1 again')
 
   // blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
-  // await blindnet.initUser(pass2a)
+  // await blindnet.login(pass2a)
   // console.log('initialized user 2')
 
   blindnet = Blindnet.init(otjwt1, 'http://localhost:9000')
@@ -48,25 +48,25 @@ async function test(swap: boolean = false) {
   console.log('encrypted', encData)
 
   blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
-  await blindnet.initUser(derived1a)
+  await blindnet.login(derived1a)
   console.log('user 1 loaded')
   const decData = await blindnet.decrypt(encData.dataId, encData.encryptedData)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
   blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
-  await blindnet.initUser(derived2a)
+  await blindnet.login(derived2a)
   console.log('initialized user 2')
 
   blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
-  await blindnet.initUser(derived1a)
+  await blindnet.login(derived1a)
   console.log('user 1 loaded')
 
   await blindnet.giveAccess('user1')
   console.log('gave access to user 2')
 
   blindnet = Blindnet.init(jwt2, 'http://localhost:9000')
-  await blindnet.initUser(derived2a)
+  await blindnet.login(derived2a)
   console.log('user 2 loaded')
   const decData2 = await blindnet.decrypt(encData.dataId, encData.encryptedData)
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
