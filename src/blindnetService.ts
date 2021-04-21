@@ -44,10 +44,10 @@ class BlindnetServiceHttp implements BlindnetService {
           method: 'POST',
           mode: 'cors',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.jwt}`
           },
           body: JSON.stringify({
-            jwt: this.jwt,
             encryption_public_key: arr2b64(ePK),
             sign_public_key: arr2b64(sPK),
             encrypted_encryption_private_key: arr2b64(enc_eSK),
@@ -64,8 +64,11 @@ class BlindnetServiceHttp implements BlindnetService {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getUser`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jwt: this.jwt })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
+      },
+      body: JSON.stringify({})
     })
 
     function mapping(data: any): GetUserResponse {
@@ -91,8 +94,11 @@ class BlindnetServiceHttp implements BlindnetService {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getUsersPublicKey`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jwt: this.jwt, user_id: userId })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
+      },
+      body: JSON.stringify({ user_id: userId })
     })
 
     return await handleResponse<{ PK: string }>(resp, x => x)
@@ -103,8 +109,11 @@ class BlindnetServiceHttp implements BlindnetService {
       await fetch(`${this.endpoint}/v${this.protocolVersion}/getPKs`, {
         method: 'POST',
         mode: 'cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jwt: this.jwt })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.jwt}`
+        },
+        body: JSON.stringify({})
       })
 
     return await handleResponse<{ PK: string, user_id: string }[]>(resp, x => x)
@@ -114,7 +123,10 @@ class BlindnetServiceHttp implements BlindnetService {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/postEncryptedKeys`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
+      },
       body: JSON.stringify(encryptedKeys)
     })
 
@@ -125,8 +137,11 @@ class BlindnetServiceHttp implements BlindnetService {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getdataKey`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jwt: this.jwt, data_id: dataId })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
+      },
+      body: JSON.stringify({ data_id: dataId })
     })
 
     return await handleResponse<{ key: string }>(resp, x => x)
@@ -136,8 +151,11 @@ class BlindnetServiceHttp implements BlindnetService {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/getUserKeys`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jwt: this.jwt })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
+      },
+      body: JSON.stringify({})
     })
 
     return await handleResponse<{ data_id: string, eKey: string }[]>(resp, x => x)
@@ -148,10 +166,10 @@ class BlindnetServiceHttp implements BlindnetService {
       method: 'POST',
       mode: 'cors',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
       },
       body: JSON.stringify({
-        jwt: this.jwt,
         eSK: arr2b64(esk),
         salt: arr2b64(salt)
       })
@@ -165,10 +183,10 @@ class BlindnetServiceHttp implements BlindnetService {
       method: 'POST',
       mode: 'cors',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.jwt}`
       },
       body: JSON.stringify({
-        jwt: this.jwt,
         user_id: userId,
         docKeys: docKeys
       })
