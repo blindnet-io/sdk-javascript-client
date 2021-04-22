@@ -14,11 +14,11 @@ class UserNotInitializedError extends Error {
   }
 }
 
-class PassphraseError extends Error {
+class PasswordError extends Error {
   code = 3
   constructor() {
-    super('Wrong passphrase provided.');
-    this.name = 'PassphraseError'
+    super('Wrong password provided.');
+    this.name = 'PasswordError'
   }
 }
 
@@ -65,7 +65,7 @@ class UserNotFoundError extends Error {
 export {
   AuthenticationError,
   UserNotInitializedError,
-  PassphraseError,
+  PasswordError,
   EncryptionError,
   BlindnetServiceError,
   NotEncryptabeError,

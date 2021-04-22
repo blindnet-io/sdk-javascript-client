@@ -1,10 +1,10 @@
 import { str2ab } from './helper'
 
-async function deriveAESKey(passphrase: string, salt: Uint8Array, exportable: boolean = false): Promise<CryptoKey> {
+async function deriveAESKey(password: string, salt: Uint8Array, exportable: boolean = false): Promise<CryptoKey> {
 
   const passKey = await window.crypto.subtle.importKey(
     "raw",
-    str2ab(passphrase),
+    str2ab(password),
     "PBKDF2",
     false,
     ["deriveKey"]

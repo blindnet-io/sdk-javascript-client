@@ -26,8 +26,8 @@ async function test(swap: boolean = false) {
 
   console.log('STARTING')
 
-  let { blindnetPassphrase: derived1a } = await Blindnet.derivePasswords(pass1a)
-  let { blindnetPassphrase: derived2a } = await Blindnet.derivePasswords(pass2a)
+  let { blindnetPassword: derived1a } = await Blindnet.derivePasswords(pass1a)
+  let { blindnetPassword: derived2a } = await Blindnet.derivePasswords(pass2a)
 
   let blindnet = Blindnet.init(jwt1, 'http://localhost:9000')
   await blindnet.login(derived1a)
@@ -72,7 +72,7 @@ async function test(swap: boolean = false) {
   console.log("data:        ", String.fromCharCode.apply(null, new Uint16Array(decData.data)))
   console.log("metadata:    ", JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata))))
 
-  // await blindnet.updatePassphrase(pass1b)
+  // await blindnet.updatePassword(pass1b)
   // console.log('user 1 pass updated')
 
   console.log('\n\n')

@@ -4,7 +4,7 @@ import {
   UserNotInitializedError,
   EncryptionError,
   BlindnetServiceError,
-  PassphraseError,
+  PasswordError,
   AuthenticationError,
   NotEncryptabeError,
   NoAccessError,
@@ -67,7 +67,7 @@ class Blindnet {
     this.service = new BlindnetServiceHttp(jwt, this.service.endpoint, Blindnet.protocolVersion)
   }
 
-  static async derivePasswords(password: string): Promise<{ blindnetPassphrase: string, appPassword: string }> {
+  static async derivePasswords(password: string): Promise<{ blindnetPassword: string, appPassword: string }> {
     const passKey = await window.crypto.subtle.importKey(
       "raw",
       str2ab(password),
@@ -94,10 +94,10 @@ class Blindnet {
     const blindnetPassBits = new Uint8Array(derivedBits, 0, 32)
     const appPassBits = new Uint8Array(derivedBits, 32, 32)
 
-    return { blindnetPassphrase: arr2b64(blindnetPassBits), appPassword: arr2b64(appPassBits) }
+    return { blindnetPassword: arr2b64(blindnetPassBits), appPassword: arr2b64(appPassBits) }
   }
 
-  async login(passphrase: string): Promise<void> {
+  async login(password: string): Promise<void> {
     await this.keyStore.clear()
 
     const resp = await this.service.getUserData()
@@ -113,7 +113,7 @@ class Blindnet {
         const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
 
         const salt = window.crypto.getRandomValues(new Uint8Array(16))
-        const aesKey = await deriveAESKey(passphrase, salt)
+        const aesKey = await deriveAESKey(password, salt)
         // TODO: used just once
         const iv = new Uint8Array(12)
         const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
@@ -147,7 +147,7 @@ class Blindnet {
           ["encrypt"]
         )
 
-        const aesKey = await deriveAESKey(passphrase, b642arr(salt))
+        const aesKey = await deriveAESKey(password, b642arr(salt))
 
         const iv = new Uint8Array(12)
 
@@ -161,7 +161,7 @@ class Blindnet {
             true,
             ["decrypt", "unwrapKey"]
           ),
-          new PassphraseError()
+          new PasswordError()
         )
 
         await this.keyStore.storeKeys(SK, PK, aesKey)
@@ -265,18 +265,18 @@ class Blindnet {
 
   }
 
-  async updatePassphrase(newPassphrase: string): Promise<void> {
+  async updatePassword(newPassword: string): Promise<void> {
     const SK = await rethrowPromise(
       () => this.keyStore.getKey('private'),
       new UserNotInitializedError('Private key not found')
     )
     const curPassKey = await rethrowPromise(
       () => this.keyStore.getKey('derived'),
-      new UserNotInitializedError('Passphrase derived key not found')
+      new UserNotInitializedError('Password derived key not found')
     )
 
     const salt = window.crypto.getRandomValues(new Uint8Array(16))
-    const newPassKey = await deriveAESKey(newPassphrase, salt)
+    const newPassKey = await deriveAESKey(newPassword, salt)
     // used just once
     const iv = new Uint8Array(12)
     const encryptedSK = await wrapSecretKey(SK, newPassKey, iv)
