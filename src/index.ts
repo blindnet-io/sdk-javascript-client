@@ -5,7 +5,10 @@ import {
   EncryptionError,
   BlindnetServiceError,
   PassphraseError,
-  AuthenticationError
+  AuthenticationError,
+  NoRegisteredUsersError,
+  NoAccessError,
+  UserNotFoundError
 } from './error'
 import {
   str2ab,
@@ -173,6 +176,9 @@ class Blindnet {
       case 'Success': {
         const users = groupPKsResp.data
 
+        if (users.length == 0)
+          throw new NoRegisteredUsersError()
+
         const dataKey = await generateRandomAESKey(true)
         const iv = window.crypto.getRandomValues(new Uint8Array(12))
 
@@ -237,44 +243,51 @@ class Blindnet {
 
     switch (eDataKeyResp.type) {
       case 'Success': {
-        const eDataKey = eDataKeyResp.data.key
+        switch (eDataKeyResp.data.type) {
+          case 'KeyFound': {
+            const eDataKey = eDataKeyResp.data.key
 
-        const dataKey = await rethrowPromise(
-          () => window.crypto.subtle.unwrapKey(
-            "jwk",
-            b642arr(eDataKey),
-            SK,
-            { name: "RSA-OAEP" },
-            { name: "AES-GCM", length: 256 },
-            false,
-            ['decrypt']
-          ),
-          new EncryptionError(`Encrypted data key for data id ${dataId} could not be decrypted`)
-        )
+            const dataKey = await rethrowPromise(
+              () => window.crypto.subtle.unwrapKey(
+                "jwk",
+                b642arr(eDataKey),
+                SK,
+                { name: "RSA-OAEP" },
+                { name: "AES-GCM", length: 256 },
+                false,
+                ['decrypt']
+              ),
+              new EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
+            )
 
-        const allData = await rethrowPromise(
-          () => window.crypto.subtle.decrypt(
-            {
-              name: "AES-GCM",
-              iv: encryptedData.slice(0, 12),
-            },
-            dataKey,
-            encryptedData.slice(12)
-          ),
-          new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
-        )
+            const allData = await rethrowPromise(
+              () => window.crypto.subtle.decrypt(
+                {
+                  name: "AES-GCM",
+                  iv: encryptedData.slice(0, 12),
+                },
+                dataKey,
+                encryptedData.slice(12)
+              ),
+              new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
+            )
 
-        const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
-        const metadata = allData.slice(8, 8 + metadataLen)
-        const data = allData.slice(8 + metadataLen)
+            const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
+            const metadata = allData.slice(8, 8 + metadataLen)
+            const data = allData.slice(8 + metadataLen)
 
-        return { data: data, metadata: metadata }
+            return { data: data, metadata: metadata }
+          }
+          case 'KeyNotFound': {
+            throw new NoAccessError(`A user has no access to data with id ${dataId}`)
+          }
+        }
       }
       case 'AuthenticationNeeded': {
         throw new AuthenticationError()
       }
       case 'Failed': {
-        throw new BlindnetServiceError(`Fetching data key failed for data id ${dataId}`)
+        throw new BlindnetServiceError(`Fetching data key failed for data with id ${dataId}`)
       }
     }
   }
@@ -327,6 +340,11 @@ class Blindnet {
         switch (encryptedDataKeysResp.type) {
           case 'Success': {
             const encryptedDataKeys = encryptedDataKeysResp.data
+
+            if (userPKResp.data.type == 'UserNotFound') {
+              throw new UserNotFoundError(`User ${userId} not registered.`)
+            }
+
             const userPKspki = userPKResp.data.PK
 
             const userPK = await window.crypto.subtle.importKey(
