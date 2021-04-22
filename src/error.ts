@@ -38,11 +38,11 @@ class BlindnetServiceError extends Error {
   }
 }
 
-class NoRegisteredUsersError extends Error {
+class NotEncryptabeError extends Error {
   code = 6
   constructor() {
     super('No users to encrypt the data to');
-    this.name = 'NoRegisteredUsersError'
+    this.name = 'NotEncryptabeError'
   }
 }
 
@@ -50,7 +50,7 @@ class NoAccessError extends Error {
   code = 7
   constructor(message: string) {
     super(message);
-    this.name = 'NoRegisteredUsersError'
+    this.name = 'NoAccessError'
   }
 }
 
@@ -68,7 +68,7 @@ export {
   PassphraseError,
   EncryptionError,
   BlindnetServiceError,
-  NoRegisteredUsersError,
+  NotEncryptabeError,
   NoAccessError,
   UserNotFoundError
 }

@@ -6,7 +6,7 @@ import {
   BlindnetServiceError,
   PassphraseError,
   AuthenticationError,
-  NoRegisteredUsersError,
+  NotEncryptabeError,
   NoAccessError,
   UserNotFoundError
 } from './error'
@@ -176,7 +176,7 @@ class Blindnet {
     const users = validateServiceResponse(resp, 'Fetching public keys failed')
 
     if (users.length == 0)
-      throw new NoRegisteredUsersError()
+      throw new NotEncryptabeError()
 
     const dataKey = await generateRandomAESKey(true)
     const iv = window.crypto.getRandomValues(new Uint8Array(12))
