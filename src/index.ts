@@ -1,5 +1,5 @@
 import { KeyStore, IndexedDbKeyStore } from './keyStore'
-import { BlindnetService, BlindnetServiceHttp } from './blindnetService'
+import { BlindnetService, BlindnetServiceHttp, ServiceResponse } from './blindnetService'
 import {
   UserNotInitializedError,
   EncryptionError,
@@ -29,6 +29,15 @@ import {
 } from './cryptoHelpers'
 
 type Data = Uint8Array | ArrayBuffer
+
+function validateServiceResponse<T>(resp: ServiceResponse<T>, errorMsg: string): T {
+  if (resp.type === 'AuthenticationNeeded')
+    throw new AuthenticationError()
+  else if (resp.type === 'Failed')
+    throw new BlindnetServiceError(errorMsg)
+  else
+    return resp.data
+}
 
 class Blindnet {
   private service: BlindnetService = undefined
@@ -91,145 +100,121 @@ class Blindnet {
   async login(passphrase: string): Promise<void> {
     await this.keyStore.clear()
 
-    const getUserResp = await this.service.getUserData()
+    const resp = await this.service.getUserData()
+    const getUserResp = validateServiceResponse(resp, 'Fetching user data failed')
 
     switch (getUserResp.type) {
-      case 'Success': {
-        switch (getUserResp.data.type) {
-          case 'UserNotFound': {
+      case 'UserNotFound': {
 
-            const encryptionKeyPair = await generateRandomRSAKeyPair(true)
-            const signKeyPair = await generateRandomECDSAKeyPair(true)
+        const encryptionKeyPair = await generateRandomRSAKeyPair(true)
+        const signKeyPair = await generateRandomECDSAKeyPair(true)
 
-            const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
-            const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
+        const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
+        const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
 
-            const salt = window.crypto.getRandomValues(new Uint8Array(16))
-            const aesKey = await deriveAESKey(passphrase, salt)
-            // TODO: used just once
-            const iv = new Uint8Array(12)
-            const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
+        const salt = window.crypto.getRandomValues(new Uint8Array(16))
+        const aesKey = await deriveAESKey(passphrase, salt)
+        // TODO: used just once
+        const iv = new Uint8Array(12)
+        const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
 
-            const signedJwt = await window.crypto.subtle.sign(
-              {
-                name: "ECDSA",
-                hash: { name: "SHA-384" },
-              },
-              signKeyPair.privateKey,
-              str2ab(this.service.jwt)
-            )
+        const signedJwt = await window.crypto.subtle.sign(
+          {
+            name: "ECDSA",
+            hash: { name: "SHA-384" },
+          },
+          signKeyPair.privateKey,
+          str2ab(this.service.jwt)
+        )
 
-            // not used in this use-case
-            const enc_signSK = new ArrayBuffer(0)
+        // not used in this use-case
+        const enc_signSK = new ArrayBuffer(0)
 
-            const resp = await this.service.initializeUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt)
-            await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, aesKey)
-            return undefined
-          }
-          case 'UserFound': {
-            const { PK: PKspki, eSK, salt } = getUserResp.data.userData
+        const resp = await this.service.registerUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt)
+        validateServiceResponse(resp, 'User could not be registered')
 
-            const PK = await window.crypto.subtle.importKey(
-              "spki",
-              b642arr(PKspki),
-              { name: "RSA-OAEP", hash: "SHA-256" },
-              true,
-              ["encrypt"]
-            )
-
-            const aesKey = await deriveAESKey(passphrase, b642arr(salt))
-
-            const iv = new Uint8Array(12)
-
-            const SK = await rethrowPromise(
-              () => window.crypto.subtle.unwrapKey(
-                "pkcs8",
-                b642arr(eSK),
-                aesKey,
-                { name: "AES-GCM", iv: iv },
-                { name: "RSA-OAEP", hash: "SHA-256" },
-                true,
-                ["decrypt", "unwrapKey"]
-              ),
-              new PassphraseError()
-            )
-
-            await this.keyStore.storeKeys(SK, PK, aesKey)
-            return undefined
-          }
-        }
+        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, aesKey)
+        return undefined
       }
-      case 'AuthenticationNeeded': {
-        throw new AuthenticationError()
-      }
-      case 'Failed': {
-        throw new BlindnetServiceError('Fetching user data failed')
+      case 'UserFound': {
+        const { PK: PKspki, eSK, salt } = getUserResp.userData
+
+        const PK = await window.crypto.subtle.importKey(
+          "spki",
+          b642arr(PKspki),
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["encrypt"]
+        )
+
+        const aesKey = await deriveAESKey(passphrase, b642arr(salt))
+
+        const iv = new Uint8Array(12)
+
+        const SK = await rethrowPromise(
+          () => window.crypto.subtle.unwrapKey(
+            "pkcs8",
+            b642arr(eSK),
+            aesKey,
+            { name: "AES-GCM", iv: iv },
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            true,
+            ["decrypt", "unwrapKey"]
+          ),
+          new PassphraseError()
+        )
+
+        await this.keyStore.storeKeys(SK, PK, aesKey)
+        return undefined
       }
     }
   }
 
   async encrypt(data: Data, metadata?: Data): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
 
-    const groupPKsResp = await this.service.getGroupPublicKeys()
+    const resp = await this.service.getGroupPublicKeys()
+    const users = validateServiceResponse(resp, 'Fetching public keys failed')
 
-    switch (groupPKsResp.type) {
-      case 'Success': {
-        const users = groupPKsResp.data
+    if (users.length == 0)
+      throw new NoRegisteredUsersError()
 
-        if (users.length == 0)
-          throw new NoRegisteredUsersError()
+    const dataKey = await generateRandomAESKey(true)
+    const iv = window.crypto.getRandomValues(new Uint8Array(12))
 
-        const dataKey = await generateRandomAESKey(true)
-        const iv = window.crypto.getRandomValues(new Uint8Array(12))
+    const metadataLenBytes = getInt64Bytes(metadata.byteLength)
+    const allData = concat3(new Uint8Array(metadataLenBytes), metadata, data)
 
-        const metadataLenBytes = getInt64Bytes(metadata.byteLength)
-        const allData = concat3(new Uint8Array(metadataLenBytes), metadata, data)
+    const encryptedData = await window.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      dataKey,
+      allData
+    )
 
-        const encryptedData = await window.crypto.subtle.encrypt(
-          { name: "AES-GCM", iv: iv },
-          dataKey,
-          allData
+    const encryptedUserKeys = await Promise.all(
+      users.map(async user => {
+
+        const PK = await window.crypto.subtle.importKey(
+          "spki",
+          b642arr(user.PK),
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["wrapKey"]
         )
 
-        const encryptedUserKeys = await Promise.all(
-          users.map(async user => {
+        const encDataKey = await window.crypto.subtle.wrapKey(
+          "jwk",
+          dataKey,
+          PK,
+          { name: "RSA-OAEP" }
+        )
 
-            const PK = await window.crypto.subtle.importKey(
-              "spki",
-              b642arr(user.PK),
-              { name: "RSA-OAEP", hash: "SHA-256" },
-              true,
-              ["wrapKey"]
-            )
+        return { user_id: user.user_id, eKey: arr2b64(encDataKey) }
+      }))
 
-            const encDataKey = await window.crypto.subtle.wrapKey(
-              "jwk",
-              dataKey,
-              PK,
-              { name: "RSA-OAEP" }
-            )
+    const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
+    const { data_id } = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
 
-            return { user_id: user.user_id, eKey: arr2b64(encDataKey) }
-          }))
-
-        const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
-
-        switch (postKeysResp.type) {
-          case 'Success': {
-            return { dataId: postKeysResp.data.data_id, encryptedData: concat(iv.buffer, encryptedData) }
-          }
-          case 'Failed': {
-            throw new BlindnetServiceError('Could not upload the encrypted public keys')
-          }
-        }
-      }
-      case 'AuthenticationNeeded': {
-        throw new AuthenticationError()
-      }
-      case 'Failed': {
-        throw new BlindnetServiceError('Fetching public keys failed')
-      }
-    }
+    return { dataId: data_id, encryptedData: concat(iv.buffer, encryptedData) }
   }
 
   async decrypt(dataId: string, encryptedData: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
@@ -239,57 +224,45 @@ class Blindnet {
       new UserNotInitializedError('Private key not found')
     )
 
-    const eDataKeyResp = await this.service.getDataKey(dataId)
+    const resp = await this.service.getDataKey(dataId)
+    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
 
-    switch (eDataKeyResp.type) {
-      case 'Success': {
-        switch (eDataKeyResp.data.type) {
-          case 'KeyFound': {
-            const eDataKey = eDataKeyResp.data.key
+    if (eDataKeyResp.type === 'KeyNotFound')
+      throw new NoAccessError(`A user has no access to data with id ${dataId}`)
 
-            const dataKey = await rethrowPromise(
-              () => window.crypto.subtle.unwrapKey(
-                "jwk",
-                b642arr(eDataKey),
-                SK,
-                { name: "RSA-OAEP" },
-                { name: "AES-GCM", length: 256 },
-                false,
-                ['decrypt']
-              ),
-              new EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
-            )
+    const eDataKey = eDataKeyResp.key
 
-            const allData = await rethrowPromise(
-              () => window.crypto.subtle.decrypt(
-                {
-                  name: "AES-GCM",
-                  iv: encryptedData.slice(0, 12),
-                },
-                dataKey,
-                encryptedData.slice(12)
-              ),
-              new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
-            )
+    const dataKey = await rethrowPromise(
+      () => window.crypto.subtle.unwrapKey(
+        "jwk",
+        b642arr(eDataKey),
+        SK,
+        { name: "RSA-OAEP" },
+        { name: "AES-GCM", length: 256 },
+        false,
+        ['decrypt']
+      ),
+      new EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
+    )
 
-            const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
-            const metadata = allData.slice(8, 8 + metadataLen)
-            const data = allData.slice(8 + metadataLen)
+    const allData = await rethrowPromise(
+      () => window.crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: encryptedData.slice(0, 12),
+        },
+        dataKey,
+        encryptedData.slice(12)
+      ),
+      new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
+    )
 
-            return { data: data, metadata: metadata }
-          }
-          case 'KeyNotFound': {
-            throw new NoAccessError(`A user has no access to data with id ${dataId}`)
-          }
-        }
-      }
-      case 'AuthenticationNeeded': {
-        throw new AuthenticationError()
-      }
-      case 'Failed': {
-        throw new BlindnetServiceError(`Fetching data key failed for data with id ${dataId}`)
-      }
-    }
+    const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
+    const metadata = allData.slice(8, 8 + metadataLen)
+    const data = allData.slice(8 + metadataLen)
+
+    return { data: data, metadata: metadata }
+
   }
 
   async updatePassphrase(newPassphrase: string): Promise<void> {
@@ -308,20 +281,11 @@ class Blindnet {
     const iv = new Uint8Array(12)
     const encryptedSK = await wrapSecretKey(SK, newPassKey, iv)
 
-    const updateUserResp = await this.service.updateUser(encryptedSK, salt)
+    const resp = await this.service.updateUser(encryptedSK, salt)
+    validateServiceResponse(resp, 'Could not upload the new keys')
 
-    switch (updateUserResp.type) {
-      case 'Success': {
-        await this.keyStore.storeKey('derived', newPassKey)
-        return undefined
-      }
-      case 'AuthenticationNeeded': {
-        throw new AuthenticationError()
-      }
-      case 'Failed': {
-        throw new BlindnetServiceError('Could not upload the new keys')
-      }
-    }
+    await this.keyStore.storeKey('derived', newPassKey)
+    return undefined
   }
 
   async giveAccess(userId: string): Promise<void> {
@@ -331,79 +295,56 @@ class Blindnet {
       new UserNotInitializedError('Private key not found')
     )
 
-    const userPKResp = await this.service.getUsersPublicKey(userId)
+    const resp1 = await this.service.getUsersPublicKey(userId)
+    const userPKResp = validateServiceResponse(resp1, `Fetching the public key of a user ${userId} failed`)
 
-    switch (userPKResp.type) {
-      case 'Success': {
-        const encryptedDataKeysResp = await this.service.getDataKeys()
+    const resp2 = await this.service.getDataKeys()
+    const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys of a user ${userId} failed`)
 
-        switch (encryptedDataKeysResp.type) {
-          case 'Success': {
-            const encryptedDataKeys = encryptedDataKeysResp.data
-
-            if (userPKResp.data.type == 'UserNotFound') {
-              throw new UserNotFoundError(`User ${userId} not registered.`)
-            }
-
-            const userPKspki = userPKResp.data.PK
-
-            const userPK = await window.crypto.subtle.importKey(
-              "spki",
-              b642arr(userPKspki),
-              { name: "RSA-OAEP", hash: "SHA-256" },
-              false,
-              ["wrapKey"]
-            )
-
-            const updatedKeys = await Promise.all(
-              encryptedDataKeysResp.data.map(async edk => {
-
-                const dataKey = await rethrowPromise(
-                  () => window.crypto.subtle.unwrapKey(
-                    "jwk",
-                    b642arr(edk.eKey),
-                    SK,
-                    { name: "RSA-OAEP" },
-                    { name: "AES-GCM", length: 256 },
-                    true,
-                    ['decrypt']
-                  ),
-                  new EncryptionError(`Could not decrypt a data key for data id ${edk.data_id}`)
-                )
-
-                const newDataKey = await window.crypto.subtle.wrapKey(
-                  "jwk",
-                  dataKey,
-                  userPK,
-                  { name: "RSA-OAEP" }
-                )
-
-                return { data_id: edk.data_id, eKey: arr2b64(newDataKey) }
-              }))
-
-            const updateRes = await this.service.giveAccess(userId, updatedKeys)
-
-            switch (updateRes.type) {
-              case 'Success': {
-                return undefined
-              }
-              case 'Failed': {
-                throw new BlindnetServiceError(`Could not upload the encrypted data keys for a user ${userId}`)
-              }
-            }
-          }
-          case 'Failed': {
-            throw new BlindnetServiceError(`Fetching the encrypted data keys of a user ${userId} failed`)
-          }
-        }
-      }
-      case 'AuthenticationNeeded': {
-        throw new AuthenticationError()
-      }
-      case 'Failed': {
-        throw new BlindnetServiceError(`Fetching the public key of a user ${userId} failed`)
-      }
+    if (userPKResp.type == 'UserNotFound') {
+      throw new UserNotFoundError(`User ${userId} not registered.`)
     }
+
+    const userPKspki = userPKResp.PK
+
+    const userPK = await window.crypto.subtle.importKey(
+      "spki",
+      b642arr(userPKspki),
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      false,
+      ["wrapKey"]
+    )
+
+    const updatedKeys = await Promise.all(
+      encryptedDataKeys.map(async edk => {
+
+        const dataKey = await rethrowPromise(
+          () => window.crypto.subtle.unwrapKey(
+            "jwk",
+            b642arr(edk.eKey),
+            SK,
+            { name: "RSA-OAEP" },
+            { name: "AES-GCM", length: 256 },
+            true,
+            ['decrypt']
+          ),
+          new EncryptionError(`Could not decrypt a data key for data id ${edk.data_id}`)
+        )
+
+        const newDataKey = await window.crypto.subtle.wrapKey(
+          "jwk",
+          dataKey,
+          userPK,
+          { name: "RSA-OAEP" }
+        )
+
+        return { data_id: edk.data_id, eKey: arr2b64(newDataKey) }
+      }))
+
+    const updateResp = await this.service.giveAccess(userId, updatedKeys)
+    validateServiceResponse(updateResp, `Fetching the encrypted data keys of a user ${userId} failed`)
+
+    return undefined
   }
 }
 

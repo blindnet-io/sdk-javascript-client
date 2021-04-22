@@ -23,7 +23,7 @@ interface BlindnetService {
   endpoint: string
   jwt: string
   protocolVersion: string
-  initializeUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>>
+  registerUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>>
   getUserData: () => Promise<ServiceResponse<GetUserResponse>>
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<GetUsersPublicKeyResponse>>
   getGroupPublicKeys: () => Promise<ServiceResponse<{ PK: string, user_id: string }[]>>
@@ -45,7 +45,7 @@ class BlindnetServiceHttp implements BlindnetService {
     this.protocolVersion = protocolVersion
   }
 
-  initializeUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>> =
+  registerUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>> =
     async (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt) => {
       const resp =
         await fetch(`${this.endpoint}/v${this.protocolVersion}/initUser`, {
@@ -244,5 +244,6 @@ async function handleResponse<T>(resp: Response, f: (_: any) => T): Promise<Serv
 
 export {
   BlindnetService,
-  BlindnetServiceHttp
+  BlindnetServiceHttp,
+  ServiceResponse
 }
