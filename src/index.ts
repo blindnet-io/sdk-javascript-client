@@ -351,6 +351,3 @@ class Blindnet {
 export {
   Blindnet
 }
-
-import { asd } from './test'
-asd(1)

@@ -1,12 +1,12 @@
-const path = require("path");
-const TerserPlugin = require("terser-webpack-plugin");
+const path = require('path');
+const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = {
-  mode: "production",
-  entry: "./src/index.ts",
+  mode: 'production',
+  entry: './src/index.ts',
   output: {
-    filename: "blindnet.js",
-    path: path.resolve(__dirname, "dist"),
+    filename: 'index.js',
+    path: path.resolve(__dirname, 'dist'),
     library: {
       name: 'blindnet',
       type: 'umd'
@@ -27,6 +27,6 @@ module.exports = {
     ]
   },
   resolve: {
-    extensions: [".tsx", ".ts", ".js"]
+    extensions: ['.ts', '.js']
   }
 }

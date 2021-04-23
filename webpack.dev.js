@@ -5,10 +5,9 @@ module.exports = {
   devtool: 'eval-source-map',
   entry: './src/index.ts',
   output: {
-    // [name].[contentHash].bundle.js
-    filename: 'blindnet.js',
+    filename: 'index.js',
     path: path.resolve(__dirname, 'dist'),
-    publicPath: "/dist/",
+    publicPath: '/dist/',
     library: {
       name: 'blindnet',
       type: 'umd'
@@ -24,24 +23,6 @@ module.exports = {
     ]
   },
   resolve: {
-    extensions: [".tsx", ".ts", ".js"]
+    extensions: ['.ts', '.js']
   }
-  // module: {
-  //   loaders: [
-  //     {
-  //       test: /(\\.js)$/,
-  //       loader: 'babel',
-  //       exclude: /node_modules/
-  //     },
-  //     {
-  //       test: /(\\.js)$/,
-  //       loader: "eslint-loader",
-  //       exclude: /node_modules/
-  //     }
-  //   ]
-  // },
-  // resolve: {
-  //   root: path.resolve('./src'),
-  //   extensions: ['', '.js']
-  // }
 }
