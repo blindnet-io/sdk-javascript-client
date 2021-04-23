@@ -7,7 +7,7 @@ function str2ab(str: string): ArrayBuffer {
   return buf;
 }
 
-function arr2str(ab: ArrayBuffer | Uint8Array): string {
+function ab2str(ab: ArrayBuffer): string {
   return String.fromCharCode.apply(null, new Uint16Array(ab))
 }
 
@@ -30,7 +30,6 @@ function b64url2arr(b64str: string): Uint8Array {
   return Uint8Array.from(atob(unescaped), c => c.charCodeAt(0))
 }
 
-// TODO: optimize
 function arr2b64url(byteArray): string {
   return btoa(Array.from(new Uint8Array(byteArray)).map(val => {
     return String.fromCharCode(val)
@@ -99,11 +98,9 @@ async function rethrowPromise<T>(f: () => Promise<T>, e: Error): Promise<T> {
 
 export {
   str2ab,
-  arr2str,
+  ab2str,
   b642arr,
   arr2b64,
-  b64url2arr,
-  arr2b64url,
   concat,
   concat3,
   getInt64Bytes,
