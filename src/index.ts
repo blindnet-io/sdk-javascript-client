@@ -298,12 +298,12 @@ class Blindnet {
     const resp1 = await this.service.getUsersPublicKey(userId)
     const userPKResp = validateServiceResponse(resp1, `Fetching the public key of a user ${userId} failed`)
 
-    const resp2 = await this.service.getDataKeys()
-    const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys of a user ${userId} failed`)
-
     if (userPKResp.type == 'UserNotFound') {
       throw new UserNotFoundError(`User ${userId} not registered.`)
     }
+
+    const resp2 = await this.service.getDataKeys()
+    const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys of a user ${userId} failed`)
 
     const userPKspki = userPKResp.PK
 

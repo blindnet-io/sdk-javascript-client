@@ -101,6 +101,7 @@ export {
   ab2str,
   b642arr,
   arr2b64,
+  decodeJwtPayload,
   concat,
   concat3,
   getInt64Bytes,

@@ -245,5 +245,8 @@ async function handleResponse<T>(resp: Response, f: (_: any) => T): Promise<Serv
 export {
   BlindnetService,
   BlindnetServiceHttp,
-  ServiceResponse
+  ServiceResponse,
+  GetUserResponse,
+  GetUsersPublicKeyResponse,
+  GetDataKeyResponse
 }
