@@ -20,7 +20,7 @@ async function deriveAESKey(password: string, salt: Uint8Array, exportable: bool
     passKey,
     { name: "AES-GCM", length: 256 },
     exportable,
-    ["wrapKey", "unwrapKey"]
+    ["decrypt", "encrypt", "wrapKey", "unwrapKey"]
   )
 
   return aesKey

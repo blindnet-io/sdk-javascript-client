@@ -1,3 +1,4 @@
+import * as ed from 'noble-ed25519'
 import { KeyStore, IndexedDbKeyStore } from './keyStore'
 import { BlindnetService, BlindnetServiceHttp, ServiceResponse } from './blindnetService'
 import {
@@ -105,43 +106,31 @@ class Blindnet {
 
     switch (getUserResp.type) {
       case 'UserNotFound': {
-
         const encryptionKeyPair = await generateRandomRSAKeyPair(true)
-        const signKeyPair = await generateRandomECDSAKeyPair(true)
+        const signSK = ed.utils.randomPrivateKey()
+        const signPK = await ed.getPublicKey(signSK)
 
         const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
-        const signPK = await window.crypto.subtle.exportKey("spki", signKeyPair.publicKey)
 
         const salt = window.crypto.getRandomValues(new Uint8Array(16))
         const aesKey = await deriveAESKey(password, salt)
 
-        const signedJwt = await window.crypto.subtle.sign(
-          {
-            name: "ECDSA",
-            hash: { name: "SHA-384" },
-          },
-          signKeyPair.privateKey,
-          new Uint8Array(str2ab(this.service.jwt))
-        )
-
-        const signedEncPK = await window.crypto.subtle.sign(
-          {
-            name: "ECDSA",
-            hash: { name: "SHA-384" },
-          },
-          signKeyPair.privateKey,
-          new Uint8Array(encryptionPK)
-        )
+        const signedJwt = await ed.sign(new Uint8Array(str2ab(this.service.jwt)), signSK)
+        const signedEncPK = await ed.sign(new Uint8Array(encryptionPK), signSK)
 
         // TODO
         const iv = new Uint8Array(12)
         const enc_encryptionSK = await wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
-        const enc_signSK = await wrapSecretKey(signKeyPair.privateKey, aesKey, iv)
+        const enc_signSK = await window.crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          signSK
+        )
 
         const resp = await this.service.registerUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt, signedEncPK)
         validateServiceResponse(resp, 'User could not be registered')
 
-        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, signKeyPair.privateKey, signKeyPair.publicKey, aesKey)
+        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, signSK, signPK, aesKey)
         return undefined
       }
       case 'UserFound': {
@@ -153,13 +142,6 @@ class Blindnet {
           { name: "RSA-OAEP", hash: "SHA-256" },
           true,
           ["encrypt"]
-        )
-        const sPK = await window.crypto.subtle.importKey(
-          "spki",
-          b642arr(sign_PK),
-          { name: "ECDSA", namedCurve: "P-384" },
-          true,
-          ["verify"]
         )
 
         const aesKey = await deriveAESKey(password, b642arr(salt))
@@ -179,17 +161,13 @@ class Blindnet {
           new PasswordError()
         )
         const sSK =
-          await window.crypto.subtle.unwrapKey(
-            "jwk",
-            b642arr(e_sign_SK),
-            aesKey,
+          await window.crypto.subtle.decrypt(
             { name: "AES-GCM", iv: iv },
-            { name: "ECDSA", namedCurve: "P-384" },
-            true,
-            ["sign"]
+            aesKey,
+            b642arr(e_sign_SK)
           )
 
-        await this.keyStore.storeKeys(eSK, ePK, sSK, sPK, aesKey)
+        await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK), b642arr(sign_PK), aesKey)
         return undefined
       }
     }
@@ -296,7 +274,7 @@ class Blindnet {
       new UserNotInitializedError('Private key not found')
     )
     const sSK = await rethrowPromise(
-      () => this.keyStore.getKey('private_sign'),
+      () => this.keyStore.getSignKey('private_sign'),
       new UserNotInitializedError('Private key not found')
     )
     const curPassKey = await rethrowPromise(
@@ -309,7 +287,11 @@ class Blindnet {
     // TODO:
     const iv = new Uint8Array(12)
     const encryptedESK = await wrapSecretKey(eSK, newPassKey, iv)
-    const encryptedSSK = await wrapSecretKey(sSK, newPassKey, iv)
+    const encryptedSSK = await window.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      newPassKey,
+      sSK
+    )
 
     const resp = await this.service.updateUser(encryptedESK, encryptedSSK, salt)
     validateServiceResponse(resp, 'Could not upload the new keys')

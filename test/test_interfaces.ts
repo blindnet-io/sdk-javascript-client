@@ -22,6 +22,9 @@ class TestKeyStore implements KeyStore {
   getKey = (type) =>
     Promise.resolve(this.store[type])
 
+  getSignKey = (type) =>
+    Promise.resolve(this.store[type])
+
   clear = () => {
     this.store = {}
     return Promise.resolve()
