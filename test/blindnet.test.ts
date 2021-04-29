@@ -1,8 +1,11 @@
 import * as chai from 'chai'
+import * as mocha from 'mocha'
+import * as cc from 'chai-as-promised'
 import * as helper from '../src/helper'
 import * as cryptoHelper from '../src/cryptoHelpers'
 import { Blindnet } from '../src'
 import { TestKeyStore, TestService } from './test_interfaces'
+
 
 chai.use(require('chai-as-promised'))
 const { expect } = chai
@@ -48,7 +51,7 @@ describe('Blindnet', () => {
     expect(users[jwt1]).to.equal(undefined)
     expect(testKS.store).to.eql({})
     await blindnet.login(pass1)
-    expect(Object.keys(testKS.store).length).to.equal(3)
+    expect(Object.keys(testKS.store).length).to.equal(5)
     expect(users[jwt1].user_id).to.equal('user1')
   })
 
@@ -203,11 +206,14 @@ describe('Blindnet', () => {
   it('should update users password', async () => {
     await blindnet.login(pass1)
 
-    const old_esk = users[jwt1].eSK
+    const old_esk = users[jwt1].e_enc_SK
+    const old_ssk = users[jwt1].e_sign_SK
     await blindnet.updatePassword(new_pass1)
-    const new_esk = users[jwt1].eSK
+    const new_esk = users[jwt1].e_enc_SK
+    const new_ssk = users[jwt1].e_sign_SK
 
     expect(old_esk).to.not.equal(new_esk)
+    expect(old_ssk).to.not.equal(new_ssk)
   })
 
   it('should fail to login with the old password after password change', () => {

@@ -60,15 +60,16 @@ async function generateRandomECDSAKeyPair(exportable: boolean = false): Promise<
       namedCurve: "P-384"
     },
     exportable,
-    ["sign"]
+    ["sign", "verify"]
   );
 
   return keyPair
 }
 
 async function wrapSecretKey(SK: CryptoKey, aesKey: CryptoKey, iv: Uint8Array): Promise<ArrayBuffer> {
+
   const wrappedSk = await window.crypto.subtle.wrapKey(
-    "pkcs8",
+    "jwk",
     SK,
     aesKey,
     {

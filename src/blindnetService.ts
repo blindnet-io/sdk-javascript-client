@@ -8,7 +8,7 @@ type ServiceResponse<T> =
   | { type: 'Failed' }
 
 type GetUserResponse =
-  | { type: 'UserFound', userData: { PK: string, eSK: string, salt: string } }
+  | { type: 'UserFound', userData: { enc_PK: string, e_enc_SK: string, sign_PK: string, e_sign_SK: string, salt: string } }
   | { type: 'UserNotFound' }
 
 type GetUsersPublicKeyResponse =
@@ -23,14 +23,14 @@ interface BlindnetService {
   endpoint: string
   jwt: string
   protocolVersion: string
-  registerUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>>
+  registerUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer, signedEncPK: ArrayBuffer) => Promise<ServiceResponse<void>>
   getUserData: () => Promise<ServiceResponse<GetUserResponse>>
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<GetUsersPublicKeyResponse>>
   getGroupPublicKeys: () => Promise<ServiceResponse<{ PK: string, user_id: string }[]>>
   postEncryptedKeys: (encryptedKeys: { user_id: string, eKey: string }[]) => Promise<ServiceResponse<{ data_id: string }>>
   getDataKey: (dataId: string) => Promise<ServiceResponse<GetDataKeyResponse>>
   getDataKeys: () => Promise<ServiceResponse<{ data_id: string, eKey: string }[]>>
-  updateUser: (esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>>
+  updateUser: (esk: ArrayBuffer, ssk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>>
   giveAccess: (userId: string, docKeys: { data_id: string, eKey: string }[]) => Promise<ServiceResponse<void>>
 }
 
@@ -45,8 +45,16 @@ class BlindnetServiceHttp implements BlindnetService {
     this.protocolVersion = protocolVersion
   }
 
-  registerUser: (ePK: ArrayBuffer, sPK: ArrayBuffer, enc_eSK: ArrayBuffer, enc_signSK: ArrayBuffer, salt: Uint8Array, signedJwt: ArrayBuffer) => Promise<ServiceResponse<void>> =
-    async (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt) => {
+  registerUser: (
+    ePK: ArrayBuffer,
+    sPK: ArrayBuffer,
+    enc_eSK: ArrayBuffer,
+    enc_signSK: ArrayBuffer,
+    salt: Uint8Array,
+    signedJwt: ArrayBuffer,
+    signedEncPK: ArrayBuffer
+  ) => Promise<ServiceResponse<void>> =
+    async (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt, signedEncPK) => {
       const resp =
         await fetch(`${this.endpoint}/v${this.protocolVersion}/initUser`, {
           method: 'POST',
@@ -59,9 +67,10 @@ class BlindnetServiceHttp implements BlindnetService {
             encryption_public_key: arr2b64(ePK),
             sign_public_key: arr2b64(sPK),
             encrypted_encryption_private_key: arr2b64(enc_eSK),
-            encrypted_sing_private_key: arr2b64(enc_signSK),
+            encrypted_sign_private_key: arr2b64(enc_signSK),
             salt: arr2b64(salt),
-            signedJwt: arr2b64(signedJwt)
+            signedJwt: arr2b64(signedJwt),
+            signedEncPK: arr2b64(signedEncPK)
           })
         })
 
@@ -87,8 +96,10 @@ class BlindnetServiceHttp implements BlindnetService {
           return {
             type: 'UserFound',
             userData: {
-              PK: data.userData.encryption_public_key,
-              eSK: data.userData.encrypted_encryption_secret_key,
+              enc_PK: data.userData.encryption_public_key,
+              e_enc_SK: data.userData.encrypted_encryption_secret_key,
+              sign_PK: data.userData.signature_public_key,
+              e_sign_SK: data.userData.encrypted_signature_secret_key,
               salt: data.userData.salt
             }
           }
@@ -193,7 +204,7 @@ class BlindnetServiceHttp implements BlindnetService {
     return await handleResponse<{ data_id: string, eKey: string }[]>(resp, x => x)
   }
 
-  updateUser: (esk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (esk, salt) => {
+  updateUser: (esk: ArrayBuffer, ssk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (esk, ssk, salt) => {
     const resp = await fetch(`${this.endpoint}/v${this.protocolVersion}/updateUser`, {
       method: 'POST',
       mode: 'cors',
@@ -203,6 +214,7 @@ class BlindnetServiceHttp implements BlindnetService {
       },
       body: JSON.stringify({
         eSK: arr2b64(esk),
+        sSK: arr2b64(ssk),
         salt: arr2b64(salt)
       })
     })

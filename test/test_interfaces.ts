@@ -10,10 +10,12 @@ class TestKeyStore implements KeyStore {
     return Promise.resolve()
   }
 
-  storeKeys = (privateKey, publicKey, aesKey) => {
-    this.store['private'] = privateKey
-    this.store['public'] = publicKey
-    this.store['derived'] = aesKey
+  storeKeys = (privateEnc, publicEnc, privateSign, publicSign, aes) => {
+    this.store['private_enc'] = privateEnc
+    this.store['public_enc'] = publicEnc
+    this.store['private_sign'] = privateSign
+    this.store['public_sign'] = publicSign
+    this.store['derived'] = aes
     return Promise.resolve()
   }
 
@@ -30,7 +32,7 @@ class TestService implements BlindnetService {
   endpoint = ''
   jwt = undefined
   userId = undefined
-  protocolVersion = 'v1.0'
+  protocolVersion = '1'
 
   shouldFail = undefined
   expiredJwt = undefined
@@ -47,13 +49,20 @@ class TestService implements BlindnetService {
     this.docKeys = docKeys
   }
 
-  registerUser = (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt) => {
+  registerUser = (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt, signedEncPK) => {
     if (this.shouldFail)
       return Promise.resolve<ServiceResponse<void>>({ type: 'Failed' })
     if (this.expiredJwt)
       return Promise.resolve<ServiceResponse<void>>({ type: 'AuthenticationNeeded' })
 
-    this.users[this.jwt] = { user_id: this.userId, PK: arr2b64(ePK), eSK: arr2b64(enc_eSK), salt: arr2b64(salt) }
+    this.users[this.jwt] = {
+      user_id: this.userId,
+      enc_PK: arr2b64(ePK),
+      e_enc_SK: arr2b64(enc_eSK),
+      sign_PK: arr2b64(sPK),
+      e_sign_SK: arr2b64(enc_signSK),
+      salt: arr2b64(salt)
+    }
     return Promise.resolve<ServiceResponse<void>>({ type: 'Success', data: undefined })
   }
 
@@ -65,7 +74,17 @@ class TestService implements BlindnetService {
       )
     else
       return Promise.resolve<ServiceResponse<GetUserResponse>>(
-        { type: 'Success', data: { type: 'UserFound', userData: { PK: userData.PK, eSK: userData.eSK, salt: userData.salt } } }
+        {
+          type: 'Success', data: {
+            type: 'UserFound', userData: {
+              enc_PK: userData.enc_PK,
+              e_enc_SK: userData.e_enc_SK,
+              sign_PK: userData.sign_PK,
+              e_sign_SK: userData.e_sign_SK,
+              salt: userData.salt
+            }
+          }
+        }
       )
   }
 
@@ -80,13 +99,13 @@ class TestService implements BlindnetService {
 
     return Promise.resolve<ServiceResponse<GetUsersPublicKeyResponse>>(
       // @ts-ignore
-      { type: 'Success', data: { type: 'UserFound', PK: PK[1].PK } }
+      { type: 'Success', data: { type: 'UserFound', PK: PK[1].enc_PK } }
     )
   }
 
   getGroupPublicKeys = () => {
     // @ts-ignore
-    const data = Object.entries(users).map(u => { return { 'PK': u[1].PK, 'user_id': u[1].user_id } })
+    const data = Object.entries(users).map(u => { return { 'PK': u[1].enc_PK, 'user_id': u[1].user_id } })
     return Promise.resolve<ServiceResponse<{ PK: string, user_id: string }[]>>(
       { type: 'Success', data }
     )
@@ -126,8 +145,8 @@ class TestService implements BlindnetService {
     )
   }
 
-  updateUser = (eSK, salt) => {
-    this.users[this.jwt] = { ...this.users[this.jwt], eSK, salt }
+  updateUser = (esk, ssk, salt) => {
+    this.users[this.jwt] = { ...this.users[this.jwt], e_enc_SK: esk, e_sign_SK: ssk, salt }
     return Promise.resolve<ServiceResponse<void>>({ type: 'Success', data: undefined })
   }
 
