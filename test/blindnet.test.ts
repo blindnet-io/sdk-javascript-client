@@ -17,6 +17,7 @@ const short_jwt = ''
 
 const pass1 = 'p4ss'
 const new_pass1 = '@#&*@'
+const new_pass2 = '483029843902'
 const pass2 = '12345678'
 const pass3 = 'p4ssW0rD'
 
@@ -222,6 +223,35 @@ describe('Blindnet', () => {
 
   it('should decrypt the data after password change', async () => {
     await blindnet.login(new_pass1)
+
+    const decData = await blindnet.decrypt(docId1, encDoc1)
+
+    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
+    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+
+    expect(data).to.equal('This is the document content')
+    expect(metadata).to.eql({ doc_name: 'passport.pdf' })
+  })
+
+  it('should update users password with old password provided', async () => {
+    await blindnet.login(new_pass1)
+
+    const old_esk = users[jwt1].e_enc_SK
+    const old_ssk = users[jwt1].e_sign_SK
+    await blindnet.updatePassword(new_pass2, new_pass1)
+    const new_esk = users[jwt1].e_enc_SK
+    const new_ssk = users[jwt1].e_sign_SK
+
+    expect(old_esk).to.not.equal(new_esk)
+    expect(old_ssk).to.not.equal(new_ssk)
+  })
+
+  it('should fail to login with the old password after password change', () => {
+    return expect(blindnet.login(new_pass1)).to.eventually.be.rejected.and.have.property('code', 3)
+  })
+
+  it('should decrypt the data after password change', async () => {
+    await blindnet.login(new_pass2)
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 

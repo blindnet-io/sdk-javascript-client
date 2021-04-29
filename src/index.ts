@@ -268,36 +268,101 @@ class Blindnet {
 
   }
 
-  async updatePassword(newPassword: string): Promise<void> {
-    const eSK = await rethrowPromise(
-      () => this.keyStore.getKey('private_enc'),
-      new UserNotInitializedError('Private key not found')
-    )
-    const sSK = await rethrowPromise(
-      () => this.keyStore.getSignKey('private_sign'),
-      new UserNotInitializedError('Private key not found')
-    )
-    const curPassKey = await rethrowPromise(
-      () => this.keyStore.getKey('derived'),
-      new UserNotInitializedError('Password derived key not found')
-    )
+  // TODO: refactor repeating code
+  async updatePassword(newPassword: string, oldPassword?: string): Promise<void> {
 
-    const salt = window.crypto.getRandomValues(new Uint8Array(16))
-    const newPassKey = await deriveAESKey(newPassword, salt)
-    // TODO:
-    const iv = new Uint8Array(12)
-    const encryptedESK = await wrapSecretKey(eSK, newPassKey, iv)
-    const encryptedSSK = await window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv },
-      newPassKey,
-      sSK
-    )
+    if (oldPassword == undefined) {
 
-    const resp = await this.service.updateUser(encryptedESK, encryptedSSK, salt)
-    validateServiceResponse(resp, 'Could not upload the new keys')
+      const eSK = await rethrowPromise(
+        () => this.keyStore.getKey('private_enc'),
+        new UserNotInitializedError('Private key not found')
+      )
+      const sSK = await rethrowPromise(
+        () => this.keyStore.getSignKey('private_sign'),
+        new UserNotInitializedError('Private key not found')
+      )
+      const curPassKey = await rethrowPromise(
+        () => this.keyStore.getKey('derived'),
+        new UserNotInitializedError('Password derived key not found')
+      )
 
-    await this.keyStore.storeKey('derived', newPassKey)
-    return undefined
+      const salt = window.crypto.getRandomValues(new Uint8Array(16))
+      const newPassKey = await deriveAESKey(newPassword, salt)
+      // TODO:
+      const iv = new Uint8Array(12)
+      const encryptedESK = await wrapSecretKey(eSK, newPassKey, iv)
+      const encryptedSSK = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        newPassKey,
+        sSK
+      )
+
+      const resp = await this.service.updateUser(encryptedESK, encryptedSSK, salt)
+      validateServiceResponse(resp, 'Could not upload the new keys')
+
+      await this.keyStore.storeKey('derived', newPassKey)
+
+      return undefined
+    } else {
+
+      const resp = await this.service.getUserData()
+      const getUserResp = validateServiceResponse(resp, 'Fetching user data failed')
+
+      // TODO
+      if (getUserResp.type == 'UserNotFound')
+        throw new UserNotFoundError('')
+
+      const { enc_PK, e_enc_SK, sign_PK, e_sign_SK, salt } = getUserResp.userData
+
+      const ePK = await window.crypto.subtle.importKey(
+        "spki",
+        b642arr(enc_PK),
+        { name: "RSA-OAEP", hash: "SHA-256" },
+        true,
+        ["encrypt"]
+      )
+
+      const aesKey = await deriveAESKey(oldPassword, b642arr(salt))
+
+      const iv = new Uint8Array(12)
+
+      const eSK = await rethrowPromise(
+        () => window.crypto.subtle.unwrapKey(
+          "jwk",
+          b642arr(e_enc_SK),
+          aesKey,
+          { name: "AES-GCM", iv: iv },
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["decrypt", "unwrapKey"]
+        ),
+        new PasswordError()
+      )
+      const sSK =
+        await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          b642arr(e_sign_SK)
+        )
+
+      const newSalt = window.crypto.getRandomValues(new Uint8Array(16))
+      const newPassKey = await deriveAESKey(newPassword, newSalt)
+      // TODO:
+      const newIv = new Uint8Array(12)
+      const encryptedESK = await wrapSecretKey(eSK, newPassKey, newIv)
+      const encryptedSSK = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: newIv },
+        newPassKey,
+        sSK
+      )
+
+      const updateUserResp = await this.service.updateUser(encryptedESK, encryptedSSK, newSalt)
+      validateServiceResponse(updateUserResp, 'Could not upload the new keys')
+
+      await this.keyStore.storeKey('derived', newPassKey)
+
+      return undefined
+    }
   }
 
   async giveAccess(userId: string): Promise<void> {
