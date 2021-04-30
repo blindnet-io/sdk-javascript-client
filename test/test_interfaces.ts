@@ -108,8 +108,8 @@ class TestService implements BlindnetService {
 
   getGroupPublicKeys = () => {
     // @ts-ignore
-    const data = Object.entries(users).map(u => { return { 'PK': u[1].enc_PK, 'user_id': u[1].user_id } })
-    return Promise.resolve<ServiceResponse<{ PK: string, user_id: string }[]>>(
+    const data = Object.entries(users).map(u => { return { 'publicEncryptionKey': u[1].enc_PK, 'userID': u[1].user_id } })
+    return Promise.resolve<ServiceResponse<{ publicEncryptionKey: string, userID: string }[]>>(
       { type: 'Success', data }
     )
   }
@@ -117,19 +117,19 @@ class TestService implements BlindnetService {
   postEncryptedKeys = (encryptedKeys) => {
     const dataId = Math.random().toString()
     this.docKeys[dataId] = encryptedKeys
-    return Promise.resolve<ServiceResponse<{ data_id: string }>>(
-      { type: 'Success', data: { data_id: dataId } }
+    return Promise.resolve<ServiceResponse<string>>(
+      { type: 'Success', data: dataId }
     )
   }
 
   getDataKey = (dataId) => {
-    const key = this.docKeys[dataId].find(doc => doc.user_id == this.userId)
+    const key = this.docKeys[dataId].find(doc => doc.userID == this.userId)
 
     if (key == undefined)
       return Promise.resolve<ServiceResponse<GetDataKeyResponse>>({ type: 'Success', data: { type: 'KeyNotFound' } })
 
     return Promise.resolve<ServiceResponse<GetDataKeyResponse>>(
-      { type: 'Success', data: { type: 'KeyFound', key: key.eKey } }
+      { type: 'Success', data: { type: 'KeyFound', key: key.encryptedSymmetricKey } }
     )
   }
 
@@ -137,13 +137,13 @@ class TestService implements BlindnetService {
 
     const data = Object.entries(this.docKeys).map(dKey => {
       return {
-        data_id: dKey[0],
+        documentID: dKey[0],
         // @ts-ignore
-        eKey: dKey[1].find(d => d.user_id == this.userId).eKey
+        encryptedSymmetricKey: dKey[1].find(d => d.userID == this.userId).encryptedSymmetricKey
       }
     })
 
-    return Promise.resolve<ServiceResponse<{ data_id: string, eKey: string }[]>>(
+    return Promise.resolve<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>>(
       { type: 'Success', data }
     )
   }
@@ -153,10 +153,10 @@ class TestService implements BlindnetService {
     return Promise.resolve<ServiceResponse<void>>({ type: 'Success', data: undefined })
   }
 
-  giveAccess = (userId: string, docKeys: { data_id: string, eKey: string }[]) => {
+  giveAccess = (userId: string, docKeys: { documentID: string, encryptedSymmetricKey: string }[]) => {
 
     docKeys.forEach(rdk => {
-      this.docKeys[rdk.data_id].push({ user_id: userId, eKey: rdk.eKey })
+      this.docKeys[rdk.documentID].push({ userID: userId, encryptedSymmetricKey: rdk.encryptedSymmetricKey })
     })
 
     return Promise.resolve<ServiceResponse<void>>({ type: 'Success', data: undefined })

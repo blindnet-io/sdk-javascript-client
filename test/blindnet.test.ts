@@ -98,7 +98,7 @@ describe('Blindnet', () => {
     docId1 = dataId
     encDoc1 = encryptedData
 
-    expect(docKeys[dataId].map(x => x.user_id)).to.eql(['user1', 'user2'])
+    expect(docKeys[dataId].map(x => x.userID)).to.eql(['user1', 'user2'])
   })
 
   it('should register the third user', async () => {
@@ -162,7 +162,7 @@ describe('Blindnet', () => {
     docId2 = dataId
     encDoc2 = encryptedData
 
-    expect(docKeys[dataId].map(x => x.user_id)).to.eql(['user1', 'user2', 'user3'])
+    expect(docKeys[dataId].map(x => x.userID)).to.eql(['user1', 'user2', 'user3'])
   })
 
   it('should decrypt the second data', async () => {
@@ -187,7 +187,7 @@ describe('Blindnet', () => {
 
     await blindnet.giveAccess('user3')
 
-    expect(docKeys[docId1].map(x => x.user_id)).to.eql(['user1', 'user2', 'user3'])
+    expect(docKeys[docId1].map(x => x.userID)).to.eql(['user1', 'user2', 'user3'])
   })
 
   it('should decrypt the first data after access has been given', async () => {

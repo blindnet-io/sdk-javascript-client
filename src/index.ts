@@ -198,7 +198,7 @@ class Blindnet {
 
         const PK = await window.crypto.subtle.importKey(
           "spki",
-          b642arr(user.PK),
+          b642arr(user.publicEncryptionKey),
           { name: "RSA-OAEP", hash: "SHA-256" },
           true,
           ["wrapKey"]
@@ -211,13 +211,13 @@ class Blindnet {
           { name: "RSA-OAEP" }
         )
 
-        return { user_id: user.user_id, eKey: arr2b64(encDataKey) }
+        return { userID: user.userID, encryptedSymmetricKey: arr2b64(encDataKey) }
       }))
 
     const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
-    const { data_id } = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
+    const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
 
-    return { dataId: data_id, encryptedData: concat(iv.buffer, encryptedData) }
+    return { dataId: dataId, encryptedData: concat(iv.buffer, encryptedData) }
   }
 
   async decrypt(dataId: string, encryptedData: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
@@ -398,14 +398,14 @@ class Blindnet {
         const dataKey = await rethrowPromise(
           () => window.crypto.subtle.unwrapKey(
             "jwk",
-            b642arr(edk.eKey),
+            b642arr(edk.encryptedSymmetricKey),
             SK,
             { name: "RSA-OAEP" },
             { name: "AES-GCM", length: 256 },
             true,
             ['decrypt']
           ),
-          new EncryptionError(`Could not decrypt a data key for data id ${edk.data_id}`)
+          new EncryptionError(`Could not decrypt a data key for data id ${edk.documentID}`)
         )
 
         const newDataKey = await window.crypto.subtle.wrapKey(
@@ -415,7 +415,7 @@ class Blindnet {
           { name: "RSA-OAEP" }
         )
 
-        return { data_id: edk.data_id, eKey: arr2b64(newDataKey) }
+        return { documentID: edk.documentID, encryptedSymmetricKey: arr2b64(newDataKey) }
       }))
 
     const updateResp = await this.service.giveAccess(userId, updatedKeys)
