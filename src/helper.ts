@@ -101,6 +101,8 @@ export {
   ab2str,
   b642arr,
   arr2b64,
+  b64url2arr,
+  arr2b64url,
   decodeJwtPayload,
   concat,
   concat3,

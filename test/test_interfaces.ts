@@ -52,7 +52,7 @@ class TestService implements BlindnetService {
     this.docKeys = docKeys
   }
 
-  registerUser = (ePK, sPK, enc_eSK, enc_signSK, salt, signedJwt, signedEncPK) => {
+  registerUser = (ePK, sPK, enc_eSK, enc_sSK, salt, signedJwt, signedEncPK) => {
     if (this.shouldFail)
       return Promise.resolve<ServiceResponse<void>>({ type: 'Failed' })
     if (this.expiredJwt)
@@ -63,7 +63,7 @@ class TestService implements BlindnetService {
       enc_PK: arr2b64(ePK),
       e_enc_SK: arr2b64(enc_eSK),
       sign_PK: arr2b64(sPK),
-      e_sign_SK: arr2b64(enc_signSK),
+      e_sign_SK: arr2b64(enc_sSK),
       salt: arr2b64(salt)
     }
     return Promise.resolve<ServiceResponse<void>>({ type: 'Success', data: undefined })
