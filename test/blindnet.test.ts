@@ -34,8 +34,8 @@ describe('Blindnet', () => {
     const derived = await Blindnet.derivePasswords(pass1)
 
     expect(derived).to.eql({
-      'appPassword': 'rAAdocA17CiaY5D/RMPgZcRNgSFDLKzqs2UG3e1PuX4=',
-      'blindnetPassword': 'NdDeSMcYfncENS3VQxxTigGJ6ZqHayfZK1zLBbJqjeo='
+      'appPassword': 'Bvlw01zDbQgBpmZeoQkrJVk9HHs+yZCc7NtWeb/+yMA=',
+      'blindnetPassword': 'RrP5TZ6exqibW9UkyJEFxB6RXHB7AMUb/BeNrAwcPP8='
     })
   })
 
@@ -145,8 +145,8 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
-    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
-    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+    const data = helper.ab2str(decData.data)
+    const metadata = JSON.parse(helper.ab2str(decData.metadata))
 
     expect(data).to.equal('This is the document content')
     expect(metadata).to.eql({ doc_name: 'passport.pdf' })
@@ -170,8 +170,8 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(docId2, encDoc2)
 
-    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
-    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+    const data = helper.ab2str(decData.data)
+    const metadata = JSON.parse(helper.ab2str(decData.metadata))
 
     expect(data).to.equal('This is the second document')
     expect(metadata).to.eql({ doc_name: 'passport2.pdf' })
@@ -197,8 +197,8 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
-    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
-    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+    const data = helper.ab2str(decData.data)
+    const metadata = JSON.parse(helper.ab2str(decData.metadata))
 
     expect(data).to.equal('This is the document content')
     expect(metadata).to.eql({ doc_name: 'passport.pdf' })
@@ -226,8 +226,8 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
-    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
-    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+    const data = helper.ab2str(decData.data)
+    const metadata = JSON.parse(helper.ab2str(decData.metadata))
 
     expect(data).to.equal('This is the document content')
     expect(metadata).to.eql({ doc_name: 'passport.pdf' })
@@ -255,8 +255,8 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
-    const data = String.fromCharCode.apply(null, new Uint16Array(decData.data))
-    const metadata = JSON.parse(String.fromCharCode.apply(null, new Uint16Array(decData.metadata)))
+    const data = helper.ab2str(decData.data)
+    const metadata = JSON.parse(helper.ab2str(decData.metadata))
 
     expect(data).to.equal('This is the document content')
     expect(metadata).to.eql({ doc_name: 'passport.pdf' })

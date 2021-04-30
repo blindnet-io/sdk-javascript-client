@@ -10,13 +10,13 @@ describe('str2ab', () => {
     const s = 'convert me'
     const res = helper.str2ab(s)
 
-    expect(new Uint8Array(res)).to.eql(new Uint8Array([99, 0, 111, 0, 110, 0, 118, 0, 101, 0, 114, 0, 116, 0, 32, 0, 109, 0, 101, 0]))
+    expect(new Uint8Array(res)).to.eql(new Uint8Array([99, 111, 110, 118, 101, 114, 116, 32, 109, 101]))
   })
 })
 
 describe('arr2str', () => {
   it('should convert an array buffer to string', () => {
-    const buf = new Uint8Array([99, 0, 111, 0, 110, 0, 118, 0, 101, 0, 114, 0, 116, 0, 32, 0, 109, 0, 101, 0]).buffer
+    const buf = new Uint8Array([99, 111, 110, 118, 101, 114, 116, 32, 109, 101]).buffer
     const res = helper.ab2str(buf)
 
     expect(res).to.equal('convert me')
