@@ -21,7 +21,7 @@ class IndexedDbKeyStore implements KeyStore {
     set(type, key, this.store)
 
   storeKeys = (privateEnc, publicEnc, privateSign, publicSign, aes) =>
-    setMany([['private_enc', privateEnc], ['public_enc', publicEnc], ['private_sign', privateEnc], ['public_sign', publicEnc], ['derived', aes]], this.store)
+    setMany([['private_enc', privateEnc], ['public_enc', publicEnc], ['private_sign', privateSign], ['public_sign', publicSign], ['derived', aes]], this.store)
 
   getKey = (type) =>
     get(type, this.store)

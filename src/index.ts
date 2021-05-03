@@ -160,12 +160,14 @@ class Blindnet {
           ),
           new PasswordError()
         )
-        const sSK =
-          await window.crypto.subtle.decrypt(
-            { name: "AES-GCM", iv: iv },
-            aesKey,
-            b642arr(e_sign_SK)
-          )
+        // TODO
+        // const sSK =
+        //   await window.crypto.subtle.decrypt(
+        //     { name: "AES-GCM", iv: iv },
+        //     aesKey,
+        //     b642arr(e_sign_SK)
+        //   )
+        const sSK = new Uint8Array()
 
         await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK), b642arr(sign_PK), aesKey)
         return undefined
@@ -338,12 +340,14 @@ class Blindnet {
         ),
         new PasswordError()
       )
-      const sSK =
-        await window.crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: iv },
-          aesKey,
-          b642arr(e_sign_SK)
-        )
+      // TODO
+      // const sSK =
+      //   await window.crypto.subtle.decrypt(
+      //     { name: "AES-GCM", iv: iv },
+      //     aesKey,
+      //     b642arr(e_sign_SK)
+      //   )
+      const sSK = new Uint8Array()
 
       const newSalt = window.crypto.getRandomValues(new Uint8Array(16))
       const newPassKey = await deriveAESKey(newPassword, newSalt)
@@ -380,9 +384,9 @@ class Blindnet {
     }
 
     const resp2 = await this.service.getDataKeys()
-    const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys of a user ${userId} failed`)
+    const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys failed`)
 
-    const userPKspki = userPKResp.PK
+    const userPKspki = userPKResp.publicEncryptionKey
 
     const userPK = await window.crypto.subtle.importKey(
       "spki",
@@ -419,7 +423,7 @@ class Blindnet {
       }))
 
     const updateResp = await this.service.giveAccess(userId, updatedKeys)
-    validateServiceResponse(updateResp, `Fetching the encrypted data keys of a user ${userId} failed`)
+    validateServiceResponse(updateResp, `Uploading the encrypted data keys for a user ${userId} failed`)
 
     return undefined
   }

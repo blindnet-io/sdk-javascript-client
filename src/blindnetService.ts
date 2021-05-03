@@ -12,7 +12,7 @@ type GetUserResponse =
   | { type: 'UserNotFound' }
 
 type GetUsersPublicKeyResponse =
-  | { type: 'UserFound', PK: string }
+  | { type: 'UserFound', publicEncryptionKey: string, publicSigningKey: string }
   | { type: 'UserNotFound' }
 
 type GetDataKeyResponse =
@@ -104,29 +104,24 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<GetUsersPublicKeyResponse>> = async (userId) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/getUsersPublicKey`, {
-      method: 'POST',
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/keys/${userId}`, {
+      method: 'GET',
       mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.jwt}`
-      },
-      body: JSON.stringify({ user_id: userId })
+      }
     })
 
     function mapping(data: any): GetUsersPublicKeyResponse {
-      switch (data.type) {
-        case 'UserNotFound':
-          return { type: 'UserNotFound' }
-        case 'UserFound':
-          return {
-            type: 'UserFound',
-            PK: data.PK
-          }
+      return {
+        type: 'UserFound',
+        publicEncryptionKey: data.publicEncryptionKey,
+        publicSigningKey: data.publicSigningKey
       }
     }
 
-    return await handleResponse<GetUsersPublicKeyResponse>(resp, mapping)
+    return await handleResponse<GetUsersPublicKeyResponse>(resp, mapping, { type: 'UserNotFound' })
   }
 
   getGroupPublicKeys: () => Promise<ServiceResponse<{ publicEncryptionKey: string, userID: string }[]>> = async () => {
@@ -175,7 +170,7 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   getDataKeys: () => Promise<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>> = async () => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/keys`, {
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/documents/keys`, {
       method: 'GET',
       mode: 'cors',
       headers: {
@@ -188,17 +183,17 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   updateUser: (esk: ArrayBuffer, ssk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (esk, ssk, salt) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/updateUser`, {
-      method: 'POST',
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/users`, {
+      method: 'PUT',
       mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.jwt}`
       },
       body: JSON.stringify({
-        eSK: arr2b64(esk),
-        sSK: arr2b64(ssk),
-        salt: arr2b64(salt)
+        encryptedPrivateEncryptionKey: arr2b64(esk),
+        encryptedPrivateSigningKey: arr2b64(ssk),
+        keyDerivationSalt: arr2b64(salt)
       })
     })
 
@@ -206,17 +201,14 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   giveAccess: (userId: string, docKeys: { documentID: string, encryptedSymmetricKey: string }[]) => Promise<ServiceResponse<void>> = async (userId, docKeys) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/giveAccess`, {
-      method: 'POST',
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/documents/keys/${userId}`, {
+      method: 'PUT',
       mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.jwt}`
       },
-      body: JSON.stringify({
-        userID: userId,
-        docKeys: docKeys
-      })
+      body: JSON.stringify(docKeys)
     })
 
     return await handleResponse<void>(resp, _ => undefined)

@@ -93,16 +93,16 @@ class TestService implements BlindnetService {
 
   getUsersPublicKey = (userId) => {
     // @ts-ignore
-    const PK = Object.entries(users).find(u => u[1].user_id == userId)
+    const user = Object.entries(users).find(u => u[1].user_id == userId)
 
-    if (PK == undefined)
+    if (user == undefined)
       return Promise.resolve<ServiceResponse<GetUsersPublicKeyResponse>>(
         { type: 'Success', data: { type: 'UserNotFound' } }
       )
 
     return Promise.resolve<ServiceResponse<GetUsersPublicKeyResponse>>(
       // @ts-ignore
-      { type: 'Success', data: { type: 'UserFound', PK: PK[1].enc_PK } }
+      { type: 'Success', data: { type: 'UserFound', publicEncryptionKey: user[1].enc_PK, publicSigningKey: user[1].sign_PK } }
     )
   }
 
