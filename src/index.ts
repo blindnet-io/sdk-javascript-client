@@ -175,7 +175,16 @@ class Blindnet {
     }
   }
 
-  async encrypt(data: Data, metadata?: Data): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
+  async encrypt(data: Data, metadata?: any): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
+
+    let metadataBytes
+
+    if (metadata != undefined) {
+      if (metadata instanceof ArrayBuffer || metadata instanceof Uint8Array)
+        metadataBytes = metadata
+      else metadataBytes = str2ab(JSON.stringify(metadata))
+    } else
+      metadataBytes = new ArrayBuffer(0)
 
     const resp = await this.service.getGroupPublicKeys()
     const users = validateServiceResponse(resp, 'Fetching public keys failed')
@@ -186,8 +195,8 @@ class Blindnet {
     const dataKey = await generateRandomAESKey(true)
     const iv = window.crypto.getRandomValues(new Uint8Array(12))
 
-    const metadataLenBytes = getInt64Bytes(metadata.byteLength)
-    const allData = concat3(new Uint8Array(metadataLenBytes), metadata, data)
+    const metadataLenBytes = getInt64Bytes(metadataBytes.byteLength)
+    const allData = concat3(new Uint8Array(metadataLenBytes), metadataBytes, data)
 
     const encryptedData = await window.crypto.subtle.encrypt(
       { name: "AES-GCM", iv: iv },

@@ -45,7 +45,7 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    return expect(blindnet.encrypt(helper.str2ab(''), helper.str2ab(''))).to.eventually.be.rejected.and.have.property('code', 6)
+    return expect(blindnet.encrypt(helper.str2ab(''))).to.eventually.be.rejected.and.have.property('code', 6)
   })
 
   it('should register a new user and initialize the keys locally', async () => {
@@ -94,7 +94,7 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    const { dataId, encryptedData } = await blindnet.encrypt(helper.str2ab('This is the document content'), helper.str2ab('{ "doc_name": "passport.pdf" }'))
+    const { dataId, encryptedData } = await blindnet.encrypt(helper.str2ab('This is the document content'), { "doc_name": "passport.pdf" })
     docId1 = dataId
     encDoc1 = encryptedData
 
@@ -158,7 +158,7 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    const { dataId, encryptedData } = await blindnet.encrypt(helper.str2ab('This is the second document'), helper.str2ab('{ "doc_name": "passport2.pdf" }'))
+    const { dataId, encryptedData } = await blindnet.encrypt(helper.str2ab('This is the second document'))
     docId2 = dataId
     encDoc2 = encryptedData
 
@@ -171,10 +171,30 @@ describe('Blindnet', () => {
     const decData = await blindnet.decrypt(docId2, encDoc2)
 
     const data = helper.ab2str(decData.data)
-    const metadata = JSON.parse(helper.ab2str(decData.metadata))
+    const metadata = decData.metadata
 
     expect(data).to.equal('This is the second document')
-    expect(metadata).to.eql({ doc_name: 'passport2.pdf' })
+    expect(metadata.byteLength).to.eql(0)
+  })
+
+  it('should encrypt the empty data', async () => {
+    const testS = new TestService(short_jwt, users, docKeys)
+    const blindnet = Blindnet.initTest(testS, testKS)
+
+    const { dataId, encryptedData } = await blindnet.encrypt(new ArrayBuffer(0))
+    docId2 = dataId
+    encDoc2 = encryptedData
+
+    expect(docKeys[dataId].map(x => x.userID)).to.eql(['user1', 'user2', 'user3'])
+  })
+
+  it('should decrypt the empty data', async () => {
+    await blindnet.login(pass1)
+
+    const decData = await blindnet.decrypt(docId2, encDoc2)
+
+    expect(decData.data.byteLength).to.equal(0)
+    expect(decData.metadata.byteLength).to.eql(0)
   })
 
   it('should fail giving access to an unregistered user', async () => {
