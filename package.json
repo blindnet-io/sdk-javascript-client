@@ -1,21 +1,29 @@
 {
   "name": "blindnet-sdk-js",
   "version": "1.0.0",
-  "description": "The front-end SDK for blindnet.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "The javascript client SDK for blindnet.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "files": [
-    "/dist"
+    "/lib"
   ],
   "scripts": {
-    "start": "webpack serve --config webpack.dev.js",
-    "build-dev": "webpack --config webpack.dev.js",
-    "build-min": "webpack --config webpack.prod.js",
+    "build-lib": "webpack --config webpack.config.js",
     "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts"
   },
+  "keywords": [
+    "blindnet"
+  ],
   "author": "blindnet",
   "homepage": "https://blindnet.io",
-  "license": "ISC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blindnet-io/blindnet-sdk-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blindnet-io/blindnet-sdk-js/issues"
+  },
   "dependencies": {
     "idb-keyval": "^5.0.5",
     "noble-ed25519": "^1.2.1"
@@ -26,6 +34,7 @@
     "@types/mocha": "^8.2.2",
     "chai": "^4.3.4",
     "chai-as-promised": "^7.1.1",
+    "clean-webpack-plugin": "^4.0.0-alpha.0",
     "mocha": "^8.3.2",
     "ts-loader": "^8.1.0",
     "ts-node": "^9.1.1",
