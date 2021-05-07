@@ -60,7 +60,7 @@ class Blindnet {
     return new Blindnet(service, keyStore)
   }
 
-  static logout() {
+  static disconnect() {
     (new IndexedDbKeyStore()).clear()
   }
 
@@ -68,7 +68,7 @@ class Blindnet {
     this.service = new BlindnetServiceHttp(jwt, this.service.endpoint, Blindnet.protocolVersion)
   }
 
-  static async derivePasswords(password: string): Promise<{ blindnetPassword: string, appPassword: string }> {
+  static async deriveSecrets(password: string): Promise<{ blindnetPassword: string, appPassword: string }> {
     const passKey = await window.crypto.subtle.importKey(
       "raw",
       str2ab(password),
@@ -98,7 +98,7 @@ class Blindnet {
     return { blindnetPassword: arr2b64(blindnetPassBits), appPassword: arr2b64(appPassBits) }
   }
 
-  async login(password: string): Promise<void> {
+  async connect(password: string): Promise<void> {
     await this.keyStore.clear()
 
     const resp = await this.service.getUserData()
@@ -160,14 +160,12 @@ class Blindnet {
           ),
           new PasswordError()
         )
-        // TODO
-        // const sSK =
-        //   await window.crypto.subtle.decrypt(
-        //     { name: "AES-GCM", iv: iv },
-        //     aesKey,
-        //     b642arr(e_sign_SK)
-        //   )
-        const sSK = new Uint8Array()
+        const sSK =
+          await window.crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: iv },
+            aesKey,
+            b642arr(e_sign_SK)
+          )
 
         await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK), b642arr(sign_PK), aesKey)
         return undefined
@@ -280,7 +278,7 @@ class Blindnet {
   }
 
   // TODO: refactor repeating code
-  async updatePassword(newPassword: string, oldPassword?: string): Promise<void> {
+  async changePassword(newPassword: string, oldPassword?: string): Promise<void> {
 
     if (oldPassword == undefined) {
 
@@ -349,14 +347,12 @@ class Blindnet {
         ),
         new PasswordError()
       )
-      // TODO
-      // const sSK =
-      //   await window.crypto.subtle.decrypt(
-      //     { name: "AES-GCM", iv: iv },
-      //     aesKey,
-      //     b642arr(e_sign_SK)
-      //   )
-      const sSK = new Uint8Array()
+      const sSK =
+        await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          b642arr(e_sign_SK)
+        )
 
       const newSalt = window.crypto.getRandomValues(new Uint8Array(16))
       const newPassKey = await deriveAESKey(newPassword, newSalt)
@@ -438,6 +434,4 @@ class Blindnet {
   }
 }
 
-export {
-  Blindnet
-}
+export default Blindnet

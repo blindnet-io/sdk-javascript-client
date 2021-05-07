@@ -3,9 +3,8 @@ import * as mocha from 'mocha'
 import * as cc from 'chai-as-promised'
 import * as helper from '../src/helper'
 import * as cryptoHelper from '../src/cryptoHelpers'
-import { Blindnet } from '../src'
+import Blindnet from '../src'
 import { TestKeyStore, TestService } from './test_interfaces'
-
 
 chai.use(require('chai-as-promised'))
 const { expect } = chai
@@ -30,8 +29,8 @@ describe('Blindnet', () => {
   const testS = new TestService(jwt1, users, docKeys)
   const blindnet = Blindnet.initTest(testS, testKS)
 
-  it('should derive the passwords', async () => {
-    const derived = await Blindnet.derivePasswords(pass1)
+  it('should derive the secrets', async () => {
+    const derived = await Blindnet.deriveSecrets(pass1)
 
     expect(derived).to.eql({
       'appPassword': 'Bvlw01zDbQgBpmZeoQkrJVk9HHs+yZCc7NtWeb/+yMA=',
@@ -51,28 +50,28 @@ describe('Blindnet', () => {
   it('should register a new user and initialize the keys locally', async () => {
     expect(users[jwt1]).to.equal(undefined)
     expect(testKS.store).to.eql({})
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
     expect(Object.keys(testKS.store).length).to.equal(5)
     expect(users[jwt1].user_id).to.equal('user1')
   })
 
   it('should fail with AuthenticationError if a wrong JWT is provided', () => {
     const blindnet = Blindnet.initTest(new TestService(jwt1, {}, {}, false, true), testKS)
-    return expect(blindnet.login(pass1)).to.eventually.be.rejected.and.have.property('code', 1)
+    return expect(blindnet.connect(pass1)).to.eventually.be.rejected.and.have.property('code', 1)
   })
 
   it('should fail with BlindnetServiceError for back-end errors', () => {
     const blindnet = Blindnet.initTest(new TestService(jwt1, {}, {}, true, false), testKS)
-    return expect(blindnet.login(pass1)).to.eventually.be.rejected.and.have.property('code', 5)
+    return expect(blindnet.connect(pass1)).to.eventually.be.rejected.and.have.property('code', 5)
   })
 
   it('should fail with PasswordError if a wrong password is provided for existing user', () => {
-    return expect(blindnet.login('wrong_pass')).to.eventually.be.rejected.and.have.property('code', 3)
+    return expect(blindnet.connect('wrong_pass')).to.eventually.be.rejected.and.have.property('code', 3)
   })
 
   it('should login an existing user and decrypt and store the keys locally', async () => {
     expect(users[jwt1].user_id).to.equal('user1')
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
   })
 
   it('should register the second user', async () => {
@@ -81,7 +80,7 @@ describe('Blindnet', () => {
     const blindnet = Blindnet.initTest(testS, testKS)
 
     expect(users[jwt2]).to.equal(undefined)
-    await blindnet.login(pass2)
+    await blindnet.connect(pass2)
     expect(users[jwt2].user_id).to.equal('user2')
   })
 
@@ -107,7 +106,7 @@ describe('Blindnet', () => {
     const blindnet = Blindnet.initTest(testS, testKS)
 
     expect(users[jwt3]).to.equal(undefined)
-    await blindnet.login(pass3)
+    await blindnet.connect(pass3)
     expect(users[jwt3].user_id).to.equal('user3')
   })
 
@@ -119,19 +118,19 @@ describe('Blindnet', () => {
   it('should fail to decrypt if a user does not have access to a documet', async () => {
     const testS = new TestService(jwt3, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
-    await blindnet.login(pass3)
+    await blindnet.connect(pass3)
 
     return expect(blindnet.decrypt(docId1, encDoc1)).to.eventually.be.rejected.and.have.property('code', 7)
   })
 
   it('should fail to decrypt the data if the data has been tempered with', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     return expect(blindnet.decrypt(docId1, helper.concat(encDoc1, new Uint8Array([1, 2, 3])))).to.eventually.be.rejected.and.have.property('code', 4)
   })
 
   it('should fail to decrypt the data if the local private key is bad', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     const newKeys = await cryptoHelper.generateRandomRSAKeyPair()
 
@@ -141,7 +140,7 @@ describe('Blindnet', () => {
   })
 
   it('should decrypt the data', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
@@ -166,7 +165,7 @@ describe('Blindnet', () => {
   })
 
   it('should decrypt the second data', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     const decData = await blindnet.decrypt(docId2, encDoc2)
 
@@ -189,7 +188,7 @@ describe('Blindnet', () => {
   })
 
   it('should decrypt the empty data', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     const decData = await blindnet.decrypt(docId2, encDoc2)
 
@@ -198,12 +197,12 @@ describe('Blindnet', () => {
   })
 
   it('should fail giving access to an unregistered user', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
     return expect(blindnet.giveAccess('unregistered')).to.eventually.be.rejected.and.have.property('code', 8)
   })
 
   it('should give access to the third user', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     await blindnet.giveAccess('user3')
 
@@ -213,7 +212,7 @@ describe('Blindnet', () => {
   it('should decrypt the first data after access has been given', async () => {
     const testS = new TestService(jwt3, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
-    await blindnet.login(pass3)
+    await blindnet.connect(pass3)
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
@@ -225,11 +224,11 @@ describe('Blindnet', () => {
   })
 
   it('should update users password', async () => {
-    await blindnet.login(pass1)
+    await blindnet.connect(pass1)
 
     const old_esk = users[jwt1].e_enc_SK
     const old_ssk = users[jwt1].e_sign_SK
-    await blindnet.updatePassword(new_pass1)
+    await blindnet.changePassword(new_pass1)
     const new_esk = users[jwt1].e_enc_SK
     const new_ssk = users[jwt1].e_sign_SK
 
@@ -238,11 +237,11 @@ describe('Blindnet', () => {
   })
 
   it('should fail to login with the old password after password change', () => {
-    return expect(blindnet.login(pass1)).to.eventually.be.rejected.and.have.property('code', 3)
+    return expect(blindnet.connect(pass1)).to.eventually.be.rejected.and.have.property('code', 3)
   })
 
   it('should decrypt the data after password change', async () => {
-    await blindnet.login(new_pass1)
+    await blindnet.connect(new_pass1)
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
@@ -254,11 +253,11 @@ describe('Blindnet', () => {
   })
 
   it('should update users password with old password provided', async () => {
-    await blindnet.login(new_pass1)
+    await blindnet.connect(new_pass1)
 
     const old_esk = users[jwt1].e_enc_SK
     const old_ssk = users[jwt1].e_sign_SK
-    await blindnet.updatePassword(new_pass2, new_pass1)
+    await blindnet.changePassword(new_pass2, new_pass1)
     const new_esk = users[jwt1].e_enc_SK
     const new_ssk = users[jwt1].e_sign_SK
 
@@ -267,11 +266,11 @@ describe('Blindnet', () => {
   })
 
   it('should fail to login with the old password after password change', () => {
-    return expect(blindnet.login(new_pass1)).to.eventually.be.rejected.and.have.property('code', 3)
+    return expect(blindnet.connect(new_pass1)).to.eventually.be.rejected.and.have.property('code', 3)
   })
 
   it('should decrypt the data after password change', async () => {
-    await blindnet.login(new_pass2)
+    await blindnet.connect(new_pass2)
 
     const decData = await blindnet.decrypt(docId1, encDoc1)
 
