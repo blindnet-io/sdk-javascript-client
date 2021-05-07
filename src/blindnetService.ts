@@ -78,7 +78,7 @@ class BlindnetServiceHttp implements BlindnetService {
     }
 
   getUserData: () => Promise<ServiceResponse<GetUserResponse>> = async () => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/users`, {
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/keys/me`, {
       method: 'GET',
       mode: 'cors',
       headers: {
@@ -104,7 +104,7 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   getUsersPublicKey: (userId: string) => Promise<ServiceResponse<GetUsersPublicKeyResponse>> = async (userId) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/keys/${userId}`, {
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/keys/${userId}`, {
       method: 'GET',
       mode: 'cors',
       headers: {
@@ -126,7 +126,7 @@ class BlindnetServiceHttp implements BlindnetService {
 
   getGroupPublicKeys: () => Promise<ServiceResponse<{ publicEncryptionKey: string, userID: string }[]>> = async () => {
     const resp =
-      await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/keys`, {
+      await fetch(`${this.endpoint}/api/v${this.protocolVersion}/keys`, {
         method: 'GET',
         mode: 'cors',
         headers: {
@@ -183,7 +183,7 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   updateUser: (esk: ArrayBuffer, ssk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>> = async (esk, ssk, salt) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/new/users`, {
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/keys/me`, {
       method: 'PUT',
       mode: 'cors',
       headers: {
@@ -201,7 +201,7 @@ class BlindnetServiceHttp implements BlindnetService {
   }
 
   giveAccess: (userId: string, docKeys: { documentID: string, encryptedSymmetricKey: string }[]) => Promise<ServiceResponse<void>> = async (userId, docKeys) => {
-    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/documents/keys/${userId}`, {
+    const resp = await fetch(`${this.endpoint}/api/v${this.protocolVersion}/documents/keys/user/${userId}`, {
       method: 'PUT',
       mode: 'cors',
       headers: {
