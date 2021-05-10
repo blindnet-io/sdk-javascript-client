@@ -23,7 +23,6 @@ import {
 } from './helper'
 import {
   generateRandomRSAKeyPair,
-  generateRandomECDSAKeyPair,
   deriveAESKey,
   generateRandomAESKey,
   wrapSecretKey
@@ -64,7 +63,7 @@ class Blindnet {
     (new IndexedDbKeyStore()).clear()
   }
 
-  refreshJwt(jwt: string) {
+  refreshToken(jwt: string) {
     this.service = new BlindnetServiceHttp(jwt, this.service.endpoint, Blindnet.protocolVersion)
   }
 
