@@ -2,14 +2,15 @@
   "name": "blindnet-sdk-js",
   "version": "1.0.3",
   "description": "The javascript client SDK for blindnet.",
-  "main": "lib/index.js",
+  "module": "lib/index.esm.js",
+  "browser": "lib/index.umd.js",
   "types": "lib/index.d.ts",
   "files": [
-    "/lib"
+    "lib"
   ],
   "scripts": {
-    "build-lib": "webpack --config webpack.config.js",
-    "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts"
+    "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
+    "build": "rollup -c"
   },
   "keywords": [
     "blindnet"
@@ -34,13 +35,17 @@
     "@types/mocha": "^8.2.2",
     "chai": "^4.3.4",
     "chai-as-promised": "^7.1.1",
-    "clean-webpack-plugin": "^4.0.0-alpha.0",
     "mocha": "^8.3.2",
+    "rollup": "^2.47.0",
+    "rollup-plugin-commonjs": "^9.2.0",
+    "rollup-plugin-delete": "^2.0.0",
+    "rollup-plugin-node-resolve": "^4.0.0",
+    "rollup-plugin-terser": "^7.0.2",
+    "rollup-plugin-typescript": "^1.0.0",
+    "rollup-plugin-typescript2": "^0.30.0",
     "ts-loader": "^8.1.0",
     "ts-node": "^9.1.1",
-    "typescript": "^4.2.4",
-    "webpack": "^5.32.0",
-    "webpack-cli": "^4.6.0",
-    "webpack-dev-server": "^3.11.2"
+    "tslib": "^1.9.3",
+    "typescript": "^4.2.4"
   }
 }
