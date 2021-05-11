@@ -1,6 +1,6 @@
 {
   "name": "blindnet-sdk-js",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "The javascript client SDK for blindnet.",
   "module": "lib/index.esm.js",
   "browser": "lib/index.umd.js",
