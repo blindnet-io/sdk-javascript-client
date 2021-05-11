@@ -70,7 +70,7 @@ class BlindnetServiceHttp implements BlindnetService {
             encryptedPrivateSigningKey: arr2b64(enc_sSK),
             keyDerivationSalt: arr2b64(salt),
             signedJwt: arr2b64(signedJwt),
-            signedEncPK: arr2b64(signedEncPK)
+            signedPublicEncryptionKey: arr2b64(signedEncPK)
           })
         })
 
