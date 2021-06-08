@@ -1,7 +1,7 @@
 class AuthenticationError extends Error {
   code = 1
   constructor() {
-    super('Authentication failed. Please generate a valid JWT.');
+    super('Authentication to blindnet failed. Please generate a valid token.');
     this.name = 'AuthenticationError'
   }
 }
@@ -62,6 +62,14 @@ class UserNotFoundError extends Error {
   }
 }
 
+class BadFormatError extends Error {
+  code = 9
+  constructor(message: string) {
+    super(message);
+    this.name = 'BadFormatError'
+  }
+}
+
 export {
   AuthenticationError,
   UserNotInitializedError,
@@ -70,5 +78,6 @@ export {
   BlindnetServiceError,
   NotEncryptabeError,
   NoAccessError,
-  UserNotFoundError
+  UserNotFoundError,
+  BadFormatError
 }

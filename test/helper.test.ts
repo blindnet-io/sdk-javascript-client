@@ -107,6 +107,24 @@ describe('intFromBytes', () => {
   })
 })
 
+describe('bytesToHex', () => {
+  it('should convert an array buffer to a hex encoded string', () => {
+    const buf = new Uint8Array([99, 111, 110, 118, 101, 114, 116, 32, 109, 101])
+    const res = helper.bytesToHex(buf)
+
+    expect(res).to.equal('636F6E76657274206D65')
+  })
+})
+
+describe('hexToBytes', () => {
+  it('should convert a hex encoded string to array buffer', () => {
+    const s = '636F6E76657274206D65'
+    const res = helper.hexToBytes(s)
+
+    expect(new Uint8Array(res)).to.eql(new Uint8Array([99, 111, 110, 118, 101, 114, 116, 32, 109, 101]))
+  })
+})
+
 describe('retrow', () => {
   it('should throw if provided function throws', () => {
     const f = () => { throw new Error() }

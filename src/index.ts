@@ -9,15 +9,19 @@ import {
   AuthenticationError,
   NotEncryptabeError,
   NoAccessError,
-  UserNotFoundError
+  UserNotFoundError,
+  BadFormatError
 } from './error'
 import {
   str2ab,
+  ab2str,
   b642arr,
   arr2b64,
   concat,
   concat3,
   getInt64Bytes,
+  bytesToHex,
+  hexToBytes,
   intFromBytes,
   rethrowPromise
 } from './helper'
@@ -28,7 +32,8 @@ import {
   wrapSecretKey
 } from './cryptoHelpers'
 
-type Data = Uint8Array | ArrayBuffer
+type Bytes = Uint8Array | ArrayBuffer
+type DataType = { type: 'STRING' } | { type: 'FILE', name: string } | { type: 'BYTES' }
 
 function validateServiceResponse<T>(resp: ServiceResponse<T>, errorMsg: string): T {
   if (resp.type === 'AuthenticationNeeded')
@@ -40,9 +45,12 @@ function validateServiceResponse<T>(resp: ServiceResponse<T>, errorMsg: string):
 }
 
 class Blindnet {
-  private service: BlindnetService = undefined
-  private keyStore: KeyStore = undefined
+  private service: BlindnetService
+  private keyStore: KeyStore
   private static protocolVersion: string = "1"
+
+  // #blindnet#
+  private prefix = [35, 98, 108, 105, 110, 100, 110, 101, 116, 35]
 
   private constructor(service: BlindnetService, keyStore: KeyStore) {
     this.service = service
@@ -53,8 +61,8 @@ class Blindnet {
     return new Blindnet(service, keyStore)
   }
 
-  static init(jwt: string, endpoint: string = 'https://api.blindnet.io') {
-    const service = new BlindnetServiceHttp(jwt, endpoint, Blindnet.protocolVersion)
+  static init(token: string, endpoint: string = 'https://api.blindnet.io') {
+    const service = new BlindnetServiceHttp(token, endpoint, Blindnet.protocolVersion)
     const keyStore = new IndexedDbKeyStore()
     return new Blindnet(service, keyStore)
   }
@@ -63,8 +71,8 @@ class Blindnet {
     (new IndexedDbKeyStore()).clear()
   }
 
-  refreshToken(jwt: string) {
-    this.service = new BlindnetServiceHttp(jwt, this.service.endpoint, Blindnet.protocolVersion)
+  refreshToken(token: string) {
+    this.service = new BlindnetServiceHttp(token, this.service.endpoint, Blindnet.protocolVersion)
   }
 
   static async deriveSecrets(password: string): Promise<{ blindnetPassword: string, appPassword: string }> {
@@ -172,16 +180,30 @@ class Blindnet {
     }
   }
 
-  async encrypt(data: Data, metadata?: any): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
+  async encrypt(data: string | File | Bytes, metadata?: { [key: string]: any }): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
 
-    let metadataBytes
+    let metadataToEncrypt: any = metadata || {}
+    let dataToEncrypt
 
-    if (metadata != undefined) {
-      if (metadata instanceof ArrayBuffer || metadata instanceof Uint8Array)
-        metadataBytes = metadata
-      else metadataBytes = str2ab(JSON.stringify(metadata))
-    } else
-      metadataBytes = new ArrayBuffer(0)
+    if (typeof metadataToEncrypt !== 'object')
+      throw new BadFormatError('Metadata has to be an object')
+
+    if (typeof data == 'string') {
+      dataToEncrypt = str2ab(data)
+      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'STRING' } }
+
+    } else if (data instanceof File) {
+      dataToEncrypt = await data.arrayBuffer()
+      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'FILE', name: data.name } }
+
+    } else if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+      dataToEncrypt = data
+      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'BYTES' } }
+    } else {
+      throw new BadFormatError('Encryption of provided data format is not supported')
+    }
+
+    const metadataBytes = str2ab(JSON.stringify(metadataToEncrypt))
 
     const resp = await this.service.getGroupPublicKeys()
     const users = validateServiceResponse(resp, 'Fetching public keys failed')
@@ -193,9 +215,9 @@ class Blindnet {
     const iv = window.crypto.getRandomValues(new Uint8Array(12))
 
     const metadataLenBytes = getInt64Bytes(metadataBytes.byteLength)
-    const allData = concat3(new Uint8Array(metadataLenBytes), metadataBytes, data)
+    const allData = concat3(new Uint8Array(metadataLenBytes), metadataBytes, dataToEncrypt)
 
-    const encryptedData = await window.crypto.subtle.encrypt(
+    const encrypted = await window.crypto.subtle.encrypt(
       { name: "AES-GCM", iv: iv },
       dataKey,
       allData
@@ -225,15 +247,82 @@ class Blindnet {
     const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
     const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
 
-    return { dataId: dataId, encryptedData: concat(iv.buffer, encryptedData) }
+    // string representation of dataId has 36 bytes (characters): 16 bytes x 2 for hex encoding and 4 hyphens
+    const encryptedData = concat3(str2ab(dataId), iv.buffer, encrypted)
+
+    return { dataId, encryptedData }
   }
 
-  async decrypt(dataId: string, encryptedData: Data): Promise<{ data: ArrayBuffer, metadata: ArrayBuffer }> {
+  async encryptValues(data: { [key: string]: string }, noPrefix?: boolean): Promise<{ dataId: string, encryptedData: { [key: string]: string } }> {
+
+    const resp = await this.service.getGroupPublicKeys()
+    const users = validateServiceResponse(resp, 'Fetching public keys failed')
+
+    if (users.length == 0)
+      throw new NotEncryptabeError()
+
+    const dataKey = await generateRandomAESKey(true)
+    const seedIv = window.crypto.getRandomValues(new Uint8Array(12))
+
+    const encryptedValues = await Promise.all(Object.entries(data).map(async field => {
+      const key = field[0]
+      const value = field[1]
+
+      const iv = new Uint8Array(await window.crypto.subtle.digest('SHA-256', concat(str2ab(key), seedIv))).slice(0, 12)
+
+      const encryptedValue = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        dataKey,
+        str2ab(value)
+      )
+
+      const concatenated = noPrefix
+        ? concat(iv, encryptedValue)
+        // [#blindnet# - 10 bytes] [size - 8 bytes] [iv - 12 bytes] [encrypted_data]
+        : concat3(new Uint8Array(this.prefix), new Uint8Array(getInt64Bytes(12 + encryptedValue.byteLength)), concat(iv, encryptedValue))
+
+      return { key, encryptedValue: bytesToHex(concatenated) }
+    }))
+
+    const encryptedUserKeys = await Promise.all(
+      users.map(async user => {
+
+        const PK = await window.crypto.subtle.importKey(
+          "spki",
+          b642arr(user.publicEncryptionKey),
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["wrapKey"]
+        )
+
+        const encDataKey = await window.crypto.subtle.wrapKey(
+          "jwk",
+          dataKey,
+          PK,
+          { name: "RSA-OAEP" }
+        )
+
+        return { userID: user.userID, encryptedSymmetricKey: arr2b64(encDataKey) }
+      }))
+
+    const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
+    const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
+
+    const encryptedData = encryptedValues.reduce((acc, cur) => {
+      return { ...acc, [cur.key]: cur.encryptedValue }
+    }, { dataId })
+
+    return { dataId, encryptedData }
+  }
+
+  async decrypt(encryptedData: Bytes): Promise<{ data: string | File | Bytes, metadata: { dataType: DataType, [key: string]: any; } }> {
 
     const SK = await rethrowPromise(
       () => this.keyStore.getKey('private_enc'),
       new UserNotInitializedError('Private key not found')
     )
+
+    const dataId = ab2str(encryptedData.slice(0, 36))
 
     const resp = await this.service.getDataKey(dataId)
     const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
@@ -260,20 +349,100 @@ class Blindnet {
       () => window.crypto.subtle.decrypt(
         {
           name: "AES-GCM",
-          iv: encryptedData.slice(0, 12),
+          iv: encryptedData.slice(36, 48),
         },
         dataKey,
-        encryptedData.slice(12)
+        encryptedData.slice(48)
       ),
       new EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
     )
 
     const metadataLen = intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
-    const metadata = allData.slice(8, 8 + metadataLen)
-    const data = allData.slice(8 + metadataLen)
+    const metadataBytes = allData.slice(8, 8 + metadataLen)
+    const dataBytes = allData.slice(8 + metadataLen)
+
+    const metadata = JSON.parse(ab2str(metadataBytes))
+    let data
+
+    if (metadata.dataType.type === 'STRING') {
+      data = ab2str(dataBytes)
+
+    } else if (metadata.dataType.type === 'FILE') {
+      data = new File([dataBytes], metadata.dataType.name)
+
+    } else if (metadata.dataType.type === 'BYTES') {
+      data = dataBytes
+    }
 
     return { data: data, metadata: metadata }
+  }
 
+  async decryptValues(encryptedData: { [key: string]: string }, noPrefix?: boolean): Promise<{ data: { [key: string]: string } }> {
+
+    const SK = await rethrowPromise(
+      () => this.keyStore.getKey('private_enc'),
+      new UserNotInitializedError('Private key not found')
+    )
+
+    const dataId = encryptedData.dataId
+
+    if (dataId == undefined)
+      throw new EncryptionError('dataId field missing from the input data')
+
+    const resp = await this.service.getDataKey(dataId)
+    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
+
+    if (eDataKeyResp.type === 'KeyNotFound')
+      throw new NoAccessError(`A user has no access to data with id ${dataId}`)
+
+    const eDataKey = eDataKeyResp.key
+
+    const dataKey = await rethrowPromise(
+      () => window.crypto.subtle.unwrapKey(
+        "jwk",
+        b642arr(eDataKey),
+        SK,
+        { name: "RSA-OAEP" },
+        { name: "AES-GCM", length: 256 },
+        false,
+        ['decrypt']
+      ),
+      new EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
+    )
+
+    const decryptedValues = await Promise.all(Object.entries(encryptedData).filter(x => x[0] !== 'dataId').map(async field => {
+      const key = field[0]
+      const encValue = hexToBytes(field[1])
+
+      const iv = noPrefix
+        ? encValue.slice(0, 12)
+        : encValue.slice(this.prefix.length + 8, this.prefix.length + 8 + 12)
+
+      const encData = noPrefix
+        ? encValue.slice(12)
+        : encValue.slice(this.prefix.length + 8 + 12)
+
+      const decryptedValue = await rethrowPromise(
+        () => window.crypto.subtle.decrypt(
+          {
+            name: "AES-GCM",
+            iv: iv,
+          },
+          dataKey,
+          encData
+        ),
+        new EncryptionError(`Encrypted values with id ${dataId} could not be decrypted`)
+      )
+
+      return { key, decryptedValue: ab2str(decryptedValue) }
+    }))
+
+
+    const data: { [key: string]: string } = decryptedValues.reduce((acc, cur) => {
+      return { ...acc, [cur.key]: cur.decryptedValue }
+    }, {})
+
+    return { data: data }
   }
 
   // TODO: refactor repeating code
@@ -433,4 +602,10 @@ class Blindnet {
   }
 }
 
-export default Blindnet
+export default {
+  Blindnet,
+  toBase64: arr2b64,
+  fromBase64: b642arr,
+  toHex: bytesToHex,
+  fromHex: hexToBytes
+}

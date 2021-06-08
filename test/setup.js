@@ -4,3 +4,6 @@ global.btoa = str => Buffer.from(str, 'binary').toString('base64')
 
 const crypto = require('crypto')
 global.window = { crypto: crypto.webcrypto }
+
+const { File } = require('web-file-polyfill')
+global.File = File
