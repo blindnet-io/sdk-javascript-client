@@ -75,6 +75,20 @@ function intFromBytes(byteArr: number[]) {
   return byteArr.reduce((a, c, i) => a + c * 2 ** (56 - i * 8), 0)
 }
 
+function bytesToHex(arr: ArrayBuffer | Uint8Array): string {
+  let s = ''
+  const h = '0123456789ABCDEF'
+  const x = arr instanceof ArrayBuffer ? new Uint8Array(arr) : arr
+  x.forEach((v) => { s += h[v >> 4] + h[v & 15] })
+  return s
+}
+
+function hexToBytes(hex): Uint8Array {
+  for (var bytes = [], c = 0; c < hex.length; c += 2)
+    bytes.push(parseInt(hex.substr(c, 2), 16))
+  return new Uint8Array(bytes)
+}
+
 function rethrow<T>(f: () => T, e: Error): T {
   try {
     return f()
@@ -103,6 +117,8 @@ export {
   concat3,
   getInt64Bytes,
   intFromBytes,
+  bytesToHex,
+  hexToBytes,
   rethrow,
   rethrowPromise
 }

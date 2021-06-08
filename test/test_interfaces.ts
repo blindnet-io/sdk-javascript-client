@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { KeyStore } from '../src/keyStore'
 import { BlindnetService, ServiceResponse, GetUserResponse, GetUsersPublicKeyResponse, GetDataKeyResponse } from '../src/blindnetService'
 import { decodeJwtPayload, arr2b64 } from '../src/helper'
@@ -115,7 +116,7 @@ class TestService implements BlindnetService {
   }
 
   postEncryptedKeys = (encryptedKeys) => {
-    const dataId = Math.random().toString()
+    const dataId = uuidv4()
     this.docKeys[dataId] = encryptedKeys
     return Promise.resolve<ServiceResponse<string>>(
       { type: 'Success', data: dataId }

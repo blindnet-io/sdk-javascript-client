@@ -224,8 +224,7 @@ async function handleResponse<T>(resp: Response, f: (_: any) => T, notFoundData?
     }
     case 401:
       return { type: 'AuthenticationNeeded' }
-    case 400: // TODO: REMOVEEEEEEE
-    case 403: // TODO
+    case 400: // TODO: fix on BE
     case 404: {
       if (notFoundData != undefined)
         return { type: 'Success', data: notFoundData }
