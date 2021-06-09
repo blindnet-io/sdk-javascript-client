@@ -131,7 +131,8 @@ class Blindnet {
         const enc_signSK = await window.crypto.subtle.encrypt(
           { name: "AES-GCM", iv: iv },
           aesKey,
-          signSK
+          // @ts-ignore
+          new Uint8Array([...signSK, ...signPK])
         )
 
         const resp = await this.service.registerUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt, signedEncPK)
@@ -174,7 +175,7 @@ class Blindnet {
             b642arr(e_sign_SK)
           )
 
-        await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK), b642arr(sign_PK), aesKey)
+        await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK).slice(0, 32), b642arr(sign_PK), aesKey)
         return undefined
       }
     }
