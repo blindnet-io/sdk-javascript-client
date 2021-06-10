@@ -9,8 +9,12 @@
     "lib"
   ],
   "scripts": {
+    "clean": "rimraf lib",
+    "prepare": "husky install",
     "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
-    "build": "rollup -c"
+    "build": "npm run clean && rollup -c",
+    "clean-build": "find ./lib/ -type f ! -name 'index.*' -delete",
+    "prepareForPublish": "npm run test && npm run build && npm run clean-build && npm version patch"
   },
   "keywords": [
     "blindnet"
@@ -35,7 +39,9 @@
     "@types/mocha": "^8.2.2",
     "chai": "^4.3.4",
     "chai-as-promised": "^7.1.1",
+    "husky": "^6.0.0",
     "mocha": "^8.3.2",
+    "rimraf": "^3.0.2",
     "rollup": "^2.47.0",
     "rollup-plugin-commonjs": "^9.2.0",
     "rollup-plugin-delete": "^2.0.0",

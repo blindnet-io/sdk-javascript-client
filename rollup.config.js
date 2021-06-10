@@ -2,7 +2,6 @@ import resolve from 'rollup-plugin-node-resolve'
 import commonjs from 'rollup-plugin-commonjs'
 import typescript from 'rollup-plugin-typescript2'
 import { terser } from "rollup-plugin-terser"
-import del from 'rollup-plugin-delete'
 import pkg from './package.json'
 
 const common = {
@@ -25,14 +24,9 @@ export default [
 	{
 		...common,
 		output: [
-			{
-				name: 'blindnet',
-				file: pkg.browser,
-				format: 'umd'
-			}
+			{ name: 'blindnet', file: pkg.browser, format: 'umd' }
 		],
 		plugins: [
-			del({ targets: 'lib/*' }),
 			...common.plugins,
 			terser()
 		]
