@@ -71,7 +71,11 @@ function getInt64Bytes(x: number) {
   return [y, (y << 8), (y << 16), (y << 24), x, (x << 8), (x << 16), (x << 24)].map(z => z >>> 24)
 }
 
-function intFromBytes(byteArr: number[]) {
+function intFromBytes(byteArr: number[] | ArrayBuffer | Uint8Array) {
+  if (byteArr instanceof Uint8Array)
+    return byteArr.reduce((a, c, i) => a + c * 2 ** (56 - i * 8), 0)
+  else if (byteArr instanceof ArrayBuffer)
+    return new Uint8Array(byteArr).reduce((a, c, i) => a + c * 2 ** (56 - i * 8), 0)
   return byteArr.reduce((a, c, i) => a + c * 2 ** (56 - i * 8), 0)
 }
 
@@ -83,7 +87,7 @@ function bytesToHex(arr: ArrayBuffer | Uint8Array): string {
   return s
 }
 
-function hexToBytes(hex): Uint8Array {
+function hexToBytes(hex: string): Uint8Array {
   for (var bytes = [], c = 0; c < hex.length; c += 2)
     bytes.push(parseInt(hex.substr(c, 2), 16))
   return new Uint8Array(bytes)

@@ -1,1 +1,1 @@
-# blindnet-sdk-js
+# The javascript web client SDK for blindnet

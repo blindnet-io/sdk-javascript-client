@@ -131,8 +131,7 @@ class Blindnet {
         const enc_signSK = await window.crypto.subtle.encrypt(
           { name: "AES-GCM", iv: iv },
           aesKey,
-          // @ts-ignore
-          new Uint8Array([...signSK, ...signPK])
+          concat(signSK, signPK)
         )
 
         const resp = await this.service.registerUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt, signedEncPK)
@@ -444,6 +443,184 @@ class Blindnet {
     }, {})
 
     return { data: data }
+  }
+
+  async decryptStream(dataId: string, stream: ReadableStream<Uint8Array>): Promise<ReadableStream<Uint8Array>> {
+
+    const SK = await rethrowPromise(
+      () => this.keyStore.getKey('private_enc'),
+      new UserNotInitializedError('Private key not found')
+    )
+    const resp = await this.service.getDataKey(dataId)
+    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
+    if (eDataKeyResp.type === 'KeyNotFound')
+      throw new NoAccessError(`A user has no access to data with id ${dataId}`)
+    const eDataKey = eDataKeyResp.key
+
+    const dataKey = await rethrowPromise(
+      () => window.crypto.subtle.unwrapKey(
+        "jwk",
+        b642arr(eDataKey),
+        SK,
+        { name: "RSA-OAEP" },
+        { name: "AES-GCM", length: 256 },
+        false,
+        ['decrypt']
+      ),
+      new EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
+    )
+
+    const flag = [50, 51, 54, 50, 54, 67, 54, 57, 54, 69, 54, 52, 54, 69, 54, 53, 55, 52, 50, 51]
+
+    function magic(arr, obj) {
+
+      const { sf, fi, rl, il, bl, l, rd, dpi, di, d } = obj
+
+      let searchingFlag = sf == undefined ? true : sf
+      let flagIndex = fi == undefined ? 0 : fi
+
+      let readingLen = rl == undefined ? false : rl
+      let iLen = il == undefined ? 0 : il
+      let byteLen = bl == undefined ? [] : bl
+      let len = l
+
+      let readingData = rd == undefined ? false : rd
+      let dataPartIndex = dpi == undefined ? 0 : dpi
+      let dataIndex = di == undefined ? 0 : di
+      let data = d == undefined ? [] : d
+
+      let partStartIndex = 0
+      let parts = []
+
+      for (let i = 0; i < arr.length; i++) {
+
+        if (readingData) {
+          data.push(arr[i])
+          dataPartIndex++
+          if (dataPartIndex == len * 2) {
+            readingData = false
+            dataPartIndex = 0
+            len = 0
+            searchingFlag = true
+
+            const ddd = hexToBytes(ab2str(new Uint8Array(data)))
+
+            parts.push({ encrypted: true, value: ddd })
+
+            data = []
+            i++
+            partStartIndex = i
+          }
+        }
+
+        if (readingLen) {
+          byteLen.push(arr[i])
+          iLen++
+          if (iLen == 16) {
+            len = intFromBytes(hexToBytes(ab2str(new Uint8Array(byteLen).buffer)))
+            iLen = 0
+            byteLen = []
+            readingLen = false
+            readingData = true
+          }
+        }
+
+        if (searchingFlag) {
+          if (arr[i] == flag[flagIndex]) {
+            flagIndex++
+            if (flagIndex == flag.length) {
+              searchingFlag = false
+              flagIndex = 0
+              readingLen = true
+
+              if (i > flag.length) {
+                const part = arr.slice(partStartIndex, i - flag.length + 1)
+                if (part.length > 0) {
+                  parts.push({ encrypted: false, value: part })
+                }
+              }
+            }
+          } else {
+            flagIndex = 0
+          }
+        }
+
+      }
+
+      const reading = readingLen || readingData
+
+      if (!reading) {
+        const part = arr.slice(partStartIndex, arr.length - flagIndex)
+        if (part.length > 0) {
+          parts.push({ encrypted: false, value: part })
+        }
+        // if (flagIndex > 0) {
+        //   midFlag = true
+        // }
+      }
+
+      return {
+        reading,
+        parts,
+        sf: searchingFlag,
+        fi: flagIndex,
+        rl: readingLen,
+        il: iLen,
+        bl: byteLen,
+        l: len,
+        rd: readingData,
+        dpi: dataPartIndex,
+        di: dataIndex,
+        d: data,
+      }
+    }
+
+    let obj: { parts: { encrypted: boolean, value: Uint8Array }[] } = { parts: [] }
+
+    const reader = stream.getReader()
+
+    const newStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        return pump()
+
+        async function pump() {
+          const { done, value } = await reader.read()
+
+          if (done) { controller.close(); return; }
+
+          obj = magic(value, obj)
+
+          for (let i = 0; i < obj.parts.length; i++) {
+            const { encrypted, value } = obj.parts[i]
+
+            if (encrypted) {
+              const [iv, encData] = [value.slice(0, 12), value.slice(12)]
+
+              const decryptedValue = await rethrowPromise(
+                () => window.crypto.subtle.decrypt(
+                  {
+                    name: "AES-GCM",
+                    iv: iv,
+                  },
+                  dataKey,
+                  encData
+                ),
+                new EncryptionError(`Encrypted values with id ${dataId} could not be decrypted`)
+              )
+
+              controller.enqueue(new Uint8Array(decryptedValue))
+
+            } else {
+              controller.enqueue(value)
+            }
+          }
+
+          return pump()
+        }
+      }
+    })
+
+    return newStream
   }
 
   // TODO: refactor repeating code
