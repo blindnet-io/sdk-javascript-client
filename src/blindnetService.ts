@@ -1,6 +1,6 @@
 import {
   arr2b64
-} from './helper'
+} from './util'
 
 type ServiceResponse<T> =
   | { type: 'Success', data: T }

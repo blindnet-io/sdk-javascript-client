@@ -1,4 +1,4 @@
-import { str2ab } from './helper'
+import { str2ab } from './util'
 
 async function deriveAESKey(password: string, salt: Uint8Array, exportable: boolean = false): Promise<CryptoKey> {
 

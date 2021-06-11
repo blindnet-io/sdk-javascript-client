@@ -2,11 +2,10 @@ import * as chai from 'chai'
 import * as mocha from 'mocha'
 import * as cc from 'chai-as-promised'
 
-import * as helper from '../src/helper'
-import * as cryptoHelper from '../src/cryptoHelpers'
+import * as util from '../src/util'
+import * as cryptoUtil from '../src/cryptoUtil'
 import blindnet from '../src'
 import { TestKeyStore, TestService } from './test_interfaces'
-import { ab2str } from '../src/helper'
 
 chai.use(require('chai-as-promised'))
 const { expect } = chai
@@ -67,7 +66,7 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    return expect(blindnet.encrypt(helper.str2ab(''))).to.eventually.be.rejected.and.have.property('code', 6)
+    return expect(blindnet.encrypt(util.str2ab(''))).to.eventually.be.rejected.and.have.property('code', 6)
   })
 
   it('should register a new user and initialize the keys locally', async () => {
@@ -116,8 +115,8 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    const encryptedData = await blindnet.encrypt(helper.str2ab('This is the document content'), { "doc_name": "passport.pdf" })
-    const dataId = helper.ab2str(encryptedData.encryptedData.slice(0, 36))
+    const encryptedData = await blindnet.encrypt(util.str2ab('This is the document content'), { "doc_name": "passport.pdf" })
+    const dataId = util.ab2str(encryptedData.encryptedData.slice(0, 36))
     docId1 = dataId
     encDoc1 = encryptedData.encryptedData
 
@@ -133,7 +132,7 @@ describe('Blindnet', () => {
     const blindnet = Blindnet.initTest(testS, testKS)
 
     const encryptedData = await blindnet.encrypt(new File(['hello'], 'hello.txt'))
-    const dataId = helper.ab2str(encryptedData.encryptedData.slice(0, 36))
+    const dataId = util.ab2str(encryptedData.encryptedData.slice(0, 36))
     fileId1 = dataId
     encFile1 = encryptedData.encryptedData
   })
@@ -158,7 +157,7 @@ describe('Blindnet', () => {
     const blindnet = Blindnet.initTest(testS, testKS)
 
     const encryptedData = await blindnet.encrypt('encrypt me !!', { hello: 420 })
-    const dataId = helper.ab2str(encryptedData.encryptedData.slice(0, 36))
+    const dataId = util.ab2str(encryptedData.encryptedData.slice(0, 36))
     textId1 = dataId
     encText1 = encryptedData.encryptedData
   })
@@ -200,17 +199,17 @@ describe('Blindnet', () => {
   it('should fail to decrypt the data if the data has been tempered with', async () => {
     await blindnet.connect(pass1)
 
-    return expect(blindnet.decrypt(helper.concat(encDoc1, new Uint8Array([1, 2, 3])))).to.eventually.be.rejected.and.have.property('code', 4)
+    return expect(blindnet.decrypt(util.concat(encDoc1, new Uint8Array([1, 2, 3])))).to.eventually.be.rejected.and.have.property('code', 4)
   })
 
   it('should fail to decrypt the data if the local private key is bad', async () => {
     await blindnet.connect(pass1)
 
-    const newKeys = await cryptoHelper.generateRandomRSAKeyPair()
+    const newKeys = await cryptoUtil.generateRandomRSAKeyPair()
 
     await testKS.storeKey('private', newKeys.privateKey)
 
-    return expect(blindnet.decrypt(helper.concat(encDoc1, new Uint8Array([1, 2, 3])))).to.eventually.be.rejected.and.have.property('code', 4)
+    return expect(blindnet.decrypt(util.concat(encDoc1, new Uint8Array([1, 2, 3])))).to.eventually.be.rejected.and.have.property('code', 4)
   })
 
   it('should decrypt the data as byte array', async () => {
@@ -218,7 +217,7 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(encDoc1)
 
-    const data = helper.ab2str(decData.data as ArrayBuffer)
+    const data = util.ab2str(decData.data as ArrayBuffer)
 
     expect(data).to.equal('This is the document content')
     expect(decData.metadata).to.eql({ dataType: { type: 'BYTES' }, doc_name: 'passport.pdf' })
@@ -230,8 +229,8 @@ describe('Blindnet', () => {
     const testS = new TestService(short_jwt, users, docKeys)
     const blindnet = Blindnet.initTest(testS, testKS)
 
-    const encryptedData = await blindnet.encrypt(helper.str2ab('This is the second document'))
-    const dataId = ab2str(encryptedData.encryptedData.slice(0, 36))
+    const encryptedData = await blindnet.encrypt(util.str2ab('This is the second document'))
+    const dataId = util.ab2str(encryptedData.encryptedData.slice(0, 36))
     docId2 = dataId
     encDoc2 = encryptedData.encryptedData
 
@@ -243,7 +242,7 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(encDoc2)
 
-    const data = helper.ab2str(decData.data as ArrayBuffer)
+    const data = util.ab2str(decData.data as ArrayBuffer)
     const metadata = decData.metadata
 
     expect(data).to.equal('This is the second document')
@@ -255,7 +254,7 @@ describe('Blindnet', () => {
     const blindnet = Blindnet.initTest(testS, testKS)
 
     const encryptedData = await blindnet.encrypt(new ArrayBuffer(0))
-    const dataId = ab2str(encryptedData.encryptedData.slice(0, 36))
+    const dataId = util.ab2str(encryptedData.encryptedData.slice(0, 36))
     encDoc2 = encryptedData.encryptedData
 
     expect(docKeys[dataId].map(x => x.userID)).to.eql(['user1', 'user2', 'user3'])
@@ -290,7 +289,7 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(encDoc1)
 
-    const data = helper.ab2str(decData.data as ArrayBuffer)
+    const data = util.ab2str(decData.data as ArrayBuffer)
     const metadata = decData.metadata
 
     expect(data).to.equal('This is the document content')
@@ -319,7 +318,7 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(encDoc1)
 
-    const data = helper.ab2str(decData.data as ArrayBuffer)
+    const data = util.ab2str(decData.data as ArrayBuffer)
     const metadata = decData.metadata
 
     expect(data).to.equal('This is the document content')
@@ -348,7 +347,7 @@ describe('Blindnet', () => {
 
     const decData = await blindnet.decrypt(encDoc1)
 
-    const data = helper.ab2str(decData.data as ArrayBuffer)
+    const data = util.ab2str(decData.data as ArrayBuffer)
     const metadata = decData.metadata
 
     expect(data).to.equal('This is the document content')

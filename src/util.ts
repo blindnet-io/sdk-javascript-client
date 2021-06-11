@@ -1,4 +1,4 @@
-function str2ab(str: string): ArrayBuffer {
+function util(str: string): ArrayBuffer {
   return new TextEncoder().encode(str)
 }
 
@@ -110,7 +110,7 @@ async function rethrowPromise<T>(f: () => Promise<T>, e: Error): Promise<T> {
 }
 
 export {
-  str2ab,
+  util as str2ab,
   ab2str,
   b642arr,
   arr2b64,

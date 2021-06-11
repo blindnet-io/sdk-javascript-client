@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { KeyStore } from '../src/keyStore'
 import { BlindnetService, ServiceResponse, GetUserResponse, GetUsersPublicKeyResponse, GetDataKeyResponse } from '../src/blindnetService'
-import { decodeJwtPayload, arr2b64 } from '../src/helper'
+import { decodeJwtPayload, arr2b64 } from '../src/util'
 
 class TestKeyStore implements KeyStore {
   store = {}
