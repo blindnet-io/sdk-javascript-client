@@ -48,7 +48,7 @@ class Blindnet {
     this.service = new BlindnetServiceHttp(token, this.service.endpoint, Blindnet.protocolVersion)
   }
 
-  static async deriveSecrets(password: string): Promise<{ blindnetPassword: string, appPassword: string }> {
+  static async deriveSecrets(password: string): Promise<{ blindnetSecret: string, appSecret: string }> {
     const passKey = await window.crypto.subtle.importKey(
       "raw",
       util.str2ab(password),
@@ -75,10 +75,10 @@ class Blindnet {
     const blindnetPassBits = new Uint8Array(derivedBits, 0, 32)
     const appPassBits = new Uint8Array(derivedBits, 32, 32)
 
-    return { blindnetPassword: util.arr2b64(blindnetPassBits), appPassword: util.arr2b64(appPassBits) }
+    return { blindnetSecret: util.arr2b64(blindnetPassBits), appSecret: util.arr2b64(appPassBits) }
   }
 
-  async connect(password: string): Promise<void> {
+  async connect(secret: string): Promise<void> {
     await this.keyStore.clear()
 
     const resp = await this.service.getUserData()
@@ -93,7 +93,7 @@ class Blindnet {
         const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
 
         const salt = window.crypto.getRandomValues(new Uint8Array(16))
-        const aesKey = await cryptoUtil.deriveAESKey(password, salt)
+        const aesKey = await cryptoUtil.deriveAESKey(secret, salt)
 
         const signedJwt = await ed.sign(new Uint8Array(util.str2ab(this.service.jwt)), signSK)
         const signedEncPK = await ed.sign(new Uint8Array(encryptionPK), signSK)
@@ -124,7 +124,7 @@ class Blindnet {
           ["encrypt"]
         )
 
-        const aesKey = await cryptoUtil.deriveAESKey(password, util.b642arr(salt))
+        const aesKey = await cryptoUtil.deriveAESKey(secret, util.b642arr(salt))
 
         const iv = new Uint8Array(12)
 
@@ -227,6 +227,9 @@ class Blindnet {
   }
 
   async encryptValues(data: { [key: string]: string }, noPrefix?: boolean): Promise<{ dataId: string, encryptedData: { [key: string]: string } }> {
+
+    if (typeof data !== 'object')
+      throw new error.BadFormatError('Data has to be an object')
 
     const resp = await this.service.getGroupPublicKeys()
     const users = validateServiceResponse(resp, 'Fetching public keys failed')
@@ -597,7 +600,7 @@ class Blindnet {
   }
 
   // TODO: refactor repeating code
-  async changePassword(newPassword: string, oldPassword?: string): Promise<void> {
+  async changeSecret(newPassword: string, oldPassword?: string): Promise<void> {
 
     if (oldPassword == undefined) {
 

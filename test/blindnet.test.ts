@@ -36,8 +36,8 @@ describe('Blindnet', () => {
     const derived = await Blindnet.deriveSecrets(pass1)
 
     expect(derived).to.eql({
-      'appPassword': 'Bvlw01zDbQgBpmZeoQkrJVk9HHs+yZCc7NtWeb/+yMA=',
-      'blindnetPassword': 'RrP5TZ6exqibW9UkyJEFxB6RXHB7AMUb/BeNrAwcPP8='
+      'appSecret': 'Bvlw01zDbQgBpmZeoQkrJVk9HHs+yZCc7NtWeb/+yMA=',
+      'blindnetSecret': 'RrP5TZ6exqibW9UkyJEFxB6RXHB7AMUb/BeNrAwcPP8='
     })
   })
 
@@ -301,7 +301,7 @@ describe('Blindnet', () => {
 
     const old_esk = users[jwt1].e_enc_SK
     const old_ssk = users[jwt1].e_sign_SK
-    await blindnet.changePassword(new_pass1)
+    await blindnet.changeSecret(new_pass1)
     const new_esk = users[jwt1].e_enc_SK
     const new_ssk = users[jwt1].e_sign_SK
 
@@ -330,7 +330,7 @@ describe('Blindnet', () => {
 
     const old_esk = users[jwt1].e_enc_SK
     const old_ssk = users[jwt1].e_sign_SK
-    await blindnet.changePassword(new_pass2, new_pass1)
+    await blindnet.changeSecret(new_pass2, new_pass1)
     const new_esk = users[jwt1].e_enc_SK
     const new_ssk = users[jwt1].e_sign_SK
 
