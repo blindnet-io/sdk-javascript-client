@@ -13,8 +13,7 @@
     "prepare": "husky install",
     "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
     "build": "npm run clean && rollup -c",
-    "clean-build": "find ./lib/ -type f ! -name 'index.*' -delete",
-    "prepareForPublish": "npm run test && npm run build && npm run clean-build && npm version patch"
+    "prepareForPublish": "npm run test && npm run build && npm version patch"
   },
   "keywords": [
     "blindnet"

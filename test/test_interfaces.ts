@@ -136,6 +136,7 @@ class TestService implements BlindnetService {
 
   getDataKeys = () => {
 
+    // @ts-ignore
     const data = Object.entries(this.docKeys).map(dKey => {
       return {
         documentID: dKey[0],
