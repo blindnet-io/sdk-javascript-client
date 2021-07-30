@@ -2,7 +2,7 @@ import { str2ab } from './util'
 
 async function deriveAESKey(password: string, salt: Uint8Array, exportable: boolean = false): Promise<CryptoKey> {
 
-  const passKey = await window.crypto.subtle.importKey(
+  const passKey = await crypto.subtle.importKey(
     "raw",
     str2ab(password),
     "PBKDF2",
@@ -10,7 +10,7 @@ async function deriveAESKey(password: string, salt: Uint8Array, exportable: bool
     ["deriveKey"]
   )
 
-  const aesKey = await window.crypto.subtle.deriveKey(
+  const aesKey = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: salt,
@@ -27,7 +27,7 @@ async function deriveAESKey(password: string, salt: Uint8Array, exportable: bool
 }
 
 async function generateRandomAESKey(exportable: boolean = false): Promise<CryptoKey> {
-  const key = await window.crypto.subtle.generateKey(
+  const key = await crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     exportable,
     ["encrypt", "decrypt"]
@@ -38,7 +38,7 @@ async function generateRandomAESKey(exportable: boolean = false): Promise<Crypto
 
 async function generateRandomRSAKeyPair(exportable: boolean = false): Promise<CryptoKeyPair> {
 
-  const keyPair = await window.crypto.subtle.generateKey(
+  const keyPair = await crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
       modulusLength: 4096,
@@ -54,7 +54,7 @@ async function generateRandomRSAKeyPair(exportable: boolean = false): Promise<Cr
 
 async function wrapSecretKey(SK: CryptoKey, aesKey: CryptoKey, iv: Uint8Array): Promise<ArrayBuffer> {
 
-  const wrappedSk = await window.crypto.subtle.wrapKey(
+  const wrappedSk = await crypto.subtle.wrapKey(
     "jwk",
     SK,
     aesKey,

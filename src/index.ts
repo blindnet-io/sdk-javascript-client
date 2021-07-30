@@ -49,7 +49,7 @@ class Blindnet {
   }
 
   static async deriveSecrets(password: string): Promise<{ blindnetSecret: string, appSecret: string }> {
-    const passKey = await window.crypto.subtle.importKey(
+    const passKey = await crypto.subtle.importKey(
       "raw",
       util.str2ab(password),
       "PBKDF2",
@@ -58,10 +58,10 @@ class Blindnet {
     )
 
     // TODO: bit derivation should be salted
-    // const salt = window.crypto.getRandomValues(new Uint8Array(16))
+    // const salt = crypto.getRandomValues(new Uint8Array(16))
     const salt = new Uint8Array([241, 211, 153, 239, 17, 34, 5, 112, 167, 218, 57, 131, 99, 29, 243, 84])
 
-    const derivedBits = await window.crypto.subtle.deriveBits(
+    const derivedBits = await crypto.subtle.deriveBits(
       {
         "name": "PBKDF2",
         salt: salt,
@@ -90,9 +90,9 @@ class Blindnet {
         const signSK = ed.utils.randomPrivateKey()
         const signPK = await ed.getPublicKey(signSK)
 
-        const encryptionPK = await window.crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
+        const encryptionPK = await crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
 
-        const salt = window.crypto.getRandomValues(new Uint8Array(16))
+        const salt = crypto.getRandomValues(new Uint8Array(16))
         const aesKey = await cryptoUtil.deriveAESKey(secret, salt)
 
         const signedJwt = await ed.sign(new Uint8Array(util.str2ab(this.service.jwt)), signSK)
@@ -101,7 +101,7 @@ class Blindnet {
         // TODO
         const iv = new Uint8Array(12)
         const enc_encryptionSK = await cryptoUtil.wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
-        const enc_signSK = await window.crypto.subtle.encrypt(
+        const enc_signSK = await crypto.subtle.encrypt(
           { name: "AES-GCM", iv: iv },
           aesKey,
           util.concat(signSK, signPK)
@@ -116,7 +116,7 @@ class Blindnet {
       case 'UserFound': {
         const { enc_PK, e_enc_SK, sign_PK, e_sign_SK, salt } = getUserResp.userData
 
-        const ePK = await window.crypto.subtle.importKey(
+        const ePK = await crypto.subtle.importKey(
           "spki",
           util.b642arr(enc_PK),
           { name: "RSA-OAEP", hash: "SHA-256" },
@@ -129,7 +129,7 @@ class Blindnet {
         const iv = new Uint8Array(12)
 
         const eSK = await util.rethrowPromise(
-          () => window.crypto.subtle.unwrapKey(
+          () => crypto.subtle.unwrapKey(
             "jwk",
             util.b642arr(e_enc_SK),
             aesKey,
@@ -141,7 +141,7 @@ class Blindnet {
           new error.PasswordError()
         )
         const sSK =
-          await window.crypto.subtle.decrypt(
+          await crypto.subtle.decrypt(
             { name: "AES-GCM", iv: iv },
             aesKey,
             util.b642arr(e_sign_SK)
@@ -185,12 +185,12 @@ class Blindnet {
       throw new error.NotEncryptabeError()
 
     const dataKey = await cryptoUtil.generateRandomAESKey(true)
-    const iv = window.crypto.getRandomValues(new Uint8Array(12))
+    const iv = crypto.getRandomValues(new Uint8Array(12))
 
     const metadataLenBytes = util.getInt64Bytes(metadataBytes.byteLength)
     const allData = util.concat3(new Uint8Array(metadataLenBytes), metadataBytes, dataToEncrypt)
 
-    const encrypted = await window.crypto.subtle.encrypt(
+    const encrypted = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: iv },
       dataKey,
       allData
@@ -199,7 +199,7 @@ class Blindnet {
     const encryptedUserKeys = await Promise.all(
       users.map(async user => {
 
-        const PK = await window.crypto.subtle.importKey(
+        const PK = await crypto.subtle.importKey(
           "spki",
           util.b642arr(user.publicEncryptionKey),
           { name: "RSA-OAEP", hash: "SHA-256" },
@@ -207,7 +207,7 @@ class Blindnet {
           ["wrapKey"]
         )
 
-        const encDataKey = await window.crypto.subtle.wrapKey(
+        const encDataKey = await crypto.subtle.wrapKey(
           "jwk",
           dataKey,
           PK,
@@ -238,15 +238,15 @@ class Blindnet {
       throw new error.NotEncryptabeError()
 
     const dataKey = await cryptoUtil.generateRandomAESKey(true)
-    const seedIv = window.crypto.getRandomValues(new Uint8Array(12))
+    const seedIv = crypto.getRandomValues(new Uint8Array(12))
 
     const encryptedValues = await Promise.all(Object.entries(data).map(async field => {
       const key = field[0]
       const value = field[1]
 
-      const iv = new Uint8Array(await window.crypto.subtle.digest('SHA-256', util.concat(util.str2ab(key), seedIv))).slice(0, 12)
+      const iv = new Uint8Array(await crypto.subtle.digest('SHA-256', util.concat(util.str2ab(key), seedIv))).slice(0, 12)
 
-      const encryptedValue = await window.crypto.subtle.encrypt(
+      const encryptedValue = await crypto.subtle.encrypt(
         { name: "AES-GCM", iv: iv },
         dataKey,
         util.str2ab(value)
@@ -263,7 +263,7 @@ class Blindnet {
     const encryptedUserKeys = await Promise.all(
       users.map(async user => {
 
-        const PK = await window.crypto.subtle.importKey(
+        const PK = await crypto.subtle.importKey(
           "spki",
           util.b642arr(user.publicEncryptionKey),
           { name: "RSA-OAEP", hash: "SHA-256" },
@@ -271,7 +271,7 @@ class Blindnet {
           ["wrapKey"]
         )
 
-        const encDataKey = await window.crypto.subtle.wrapKey(
+        const encDataKey = await crypto.subtle.wrapKey(
           "jwk",
           dataKey,
           PK,
@@ -309,7 +309,7 @@ class Blindnet {
     const eDataKey = eDataKeyResp.key
 
     const dataKey = await util.rethrowPromise(
-      () => window.crypto.subtle.unwrapKey(
+      () => crypto.subtle.unwrapKey(
         "jwk",
         util.b642arr(eDataKey),
         SK,
@@ -322,7 +322,7 @@ class Blindnet {
     )
 
     const allData = await util.rethrowPromise(
-      () => window.crypto.subtle.decrypt(
+      () => crypto.subtle.decrypt(
         {
           name: "AES-GCM",
           iv: encryptedData.slice(36, 48),
@@ -374,7 +374,7 @@ class Blindnet {
     const eDataKey = eDataKeyResp.key
 
     const dataKey = await util.rethrowPromise(
-      () => window.crypto.subtle.unwrapKey(
+      () => crypto.subtle.unwrapKey(
         "jwk",
         util.b642arr(eDataKey),
         SK,
@@ -399,7 +399,7 @@ class Blindnet {
         : encValue.slice(this.prefix.length + 8 + 12)
 
       const decryptedValue = await util.rethrowPromise(
-        () => window.crypto.subtle.decrypt(
+        () => crypto.subtle.decrypt(
           {
             name: "AES-GCM",
             iv: iv,
@@ -434,7 +434,7 @@ class Blindnet {
     const eDataKey = eDataKeyResp.key
 
     const dataKey = await util.rethrowPromise(
-      () => window.crypto.subtle.unwrapKey(
+      () => crypto.subtle.unwrapKey(
         "jwk",
         util.b642arr(eDataKey),
         SK,
@@ -573,7 +573,7 @@ class Blindnet {
               const [iv, encData] = [value.slice(0, 12), value.slice(12)]
 
               const decryptedValue = await util.rethrowPromise(
-                () => window.crypto.subtle.decrypt(
+                () => crypto.subtle.decrypt(
                   {
                     name: "AES-GCM",
                     iv: iv,
@@ -617,12 +617,12 @@ class Blindnet {
         new error.UserNotInitializedError('Password derived key not found')
       )
 
-      const salt = window.crypto.getRandomValues(new Uint8Array(16))
+      const salt = crypto.getRandomValues(new Uint8Array(16))
       const newPassKey = await cryptoUtil.deriveAESKey(newPassword, salt)
       // TODO:
       const iv = new Uint8Array(12)
       const encryptedESK = await cryptoUtil.wrapSecretKey(eSK, newPassKey, iv)
-      const encryptedSSK = await window.crypto.subtle.encrypt(
+      const encryptedSSK = await crypto.subtle.encrypt(
         { name: "AES-GCM", iv: iv },
         newPassKey,
         sSK
@@ -645,7 +645,7 @@ class Blindnet {
 
       const { enc_PK, e_enc_SK, sign_PK, e_sign_SK, salt } = getUserResp.userData
 
-      const ePK = await window.crypto.subtle.importKey(
+      const ePK = await crypto.subtle.importKey(
         "spki",
         util.b642arr(enc_PK),
         { name: "RSA-OAEP", hash: "SHA-256" },
@@ -658,7 +658,7 @@ class Blindnet {
       const iv = new Uint8Array(12)
 
       const eSK = await util.rethrowPromise(
-        () => window.crypto.subtle.unwrapKey(
+        () => crypto.subtle.unwrapKey(
           "jwk",
           util.b642arr(e_enc_SK),
           aesKey,
@@ -670,18 +670,18 @@ class Blindnet {
         new error.PasswordError()
       )
       const sSK =
-        await window.crypto.subtle.decrypt(
+        await crypto.subtle.decrypt(
           { name: "AES-GCM", iv: iv },
           aesKey,
           util.b642arr(e_sign_SK)
         )
 
-      const newSalt = window.crypto.getRandomValues(new Uint8Array(16))
+      const newSalt = crypto.getRandomValues(new Uint8Array(16))
       const newPassKey = await cryptoUtil.deriveAESKey(newPassword, newSalt)
       // TODO:
       const newIv = new Uint8Array(12)
       const encryptedESK = await cryptoUtil.wrapSecretKey(eSK, newPassKey, newIv)
-      const encryptedSSK = await window.crypto.subtle.encrypt(
+      const encryptedSSK = await crypto.subtle.encrypt(
         { name: "AES-GCM", iv: newIv },
         newPassKey,
         sSK
@@ -715,7 +715,7 @@ class Blindnet {
 
     const userPKspki = userPKResp.publicEncryptionKey
 
-    const userPK = await window.crypto.subtle.importKey(
+    const userPK = await crypto.subtle.importKey(
       "spki",
       util.b642arr(userPKspki),
       { name: "RSA-OAEP", hash: "SHA-256" },
@@ -727,7 +727,7 @@ class Blindnet {
       encryptedDataKeys.map(async edk => {
 
         const dataKey = await util.rethrowPromise(
-          () => window.crypto.subtle.unwrapKey(
+          () => crypto.subtle.unwrapKey(
             "jwk",
             util.b642arr(edk.encryptedSymmetricKey),
             SK,
@@ -739,7 +739,7 @@ class Blindnet {
           new error.EncryptionError(`Could not decrypt a data key for data id ${edk.documentID}`)
         )
 
-        const newDataKey = await window.crypto.subtle.wrapKey(
+        const newDataKey = await crypto.subtle.wrapKey(
           "jwk",
           dataKey,
           userPK,

@@ -1,3 +1,8 @@
+if (!(typeof window == 'object' && 'atob' in window && 'btoa' in window)) {
+  global.atob = b64Encoded => Buffer.from(b64Encoded, 'base64').toString('binary')
+  global.btoa = str => Buffer.from(str, 'binary').toString('base64')
+}
+
 function str2ab(str: string): ArrayBuffer {
   return new TextEncoder().encode(str)
 }
