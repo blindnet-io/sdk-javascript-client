@@ -2,8 +2,7 @@
   "name": "@blindnet/sdk-javascript",
   "version": "0.1.3",
   "description": "The javascript web client SDK for blindnet.",
-  "module": "lib/index.esm.js",
-  "browser": "lib/index.umd.js",
+  "main": "lib/index.umd.js",
   "types": "lib/index.d.ts",
   "files": [
     "lib"
@@ -12,8 +11,7 @@
     "clean": "rimraf lib",
     "prepare": "husky install",
     "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
-    "build": "npm run clean && rollup -c",
-    "prepareForPublish": "npm run test && npm run build && npm version patch"
+    "build": "npm run clean && rollup -c"
   },
   "keywords": [
     "blindnet"

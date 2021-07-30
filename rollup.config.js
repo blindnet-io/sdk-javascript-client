@@ -6,9 +6,6 @@ import pkg from './package.json'
 
 const common = {
 	input: 'src/index.ts',
-	external: [
-		'crypto'
-	],
 	plugins: [
 		resolve({
 			browser: true,
@@ -24,20 +21,11 @@ export default [
 	{
 		...common,
 		output: [
-			{ name: 'blindnet', file: pkg.browser, format: 'umd' }
+			{ name: 'blindnet', file: pkg.main, format: 'umd' }
 		],
 		plugins: [
 			...common.plugins,
 			terser()
-		]
-	},
-	{
-		...common,
-		output: [
-			{ file: pkg.module, format: 'es' }
-		],
-		plugins: [
-			...common.plugins
 		]
 	}
 ]
