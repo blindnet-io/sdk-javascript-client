@@ -1,6 +1,6 @@
 {
   "name": "@blindnet/sdk-javascript",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "The javascript web client SDK for blindnet.",
   "main": "lib/index.umd.js",
   "types": "lib/index.d.ts",
