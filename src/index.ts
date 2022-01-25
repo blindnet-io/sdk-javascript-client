@@ -1,20 +1,181 @@
-import * as ed from 'noble-ed25519'
 import { KeyStore, IndexedDbKeyStore } from './keyStore'
 import { BlindnetService, BlindnetServiceHttp, ServiceResponse } from './blindnetService'
 import * as error from './error'
 import * as util from './util'
-import * as cryptoUtil from './cryptoUtil'
+import * as c from './crypto'
 
-type Bytes = Uint8Array | ArrayBuffer
-type DataType = { type: 'STRING' } | { type: 'FILE', name: string } | { type: 'BYTES' }
+type JsonPrim = string | number | boolean | Array<JsonPrim> | { [key: string]: JsonPrim }
+type JsonObj = { [key: string]: JsonPrim }
 
-function validateServiceResponse<T>(resp: ServiceResponse<T>, errorMsg: string): T {
+type Data = string | JsonObj | File | ArrayBuffer
+type Metadata = JsonObj
+
+type DataType =
+  | { type: 'String' }
+  | { type: 'Json' }
+  | { type: 'File', name: string }
+  | { type: 'Binary' }
+
+type DecryptionResult =
+  | { data: string, metadata: JsonObj, dataType: { type: 'String' } }
+  | { data: JsonObj, metadata: JsonObj, dataType: { type: 'Json' } }
+  | { data: File, metadata: JsonObj, dataType: { type: 'File', name: string } }
+  | { data: ArrayBuffer, metadata: JsonObj, dataType: { type: 'Binary' } }
+
+function validateServiceResponse<T>(
+  resp: ServiceResponse<T>,
+  errorMsg: string,
+  isValid: (_: T) => boolean = _ => true
+): T {
   if (resp.type === 'AuthenticationNeeded')
     throw new error.AuthenticationError()
   else if (resp.type === 'Failed')
     throw new error.BlindnetServiceError(errorMsg)
+  else if (!isValid(resp.data))
+    throw new error.BlindnetServiceError("Data returned from server not valid")
   else
     return resp.data
+}
+
+class CaptureBuilder {
+  private data: Data
+  private metadata: Metadata
+  private userIds: string[]
+  private groupId: string
+
+  service: BlindnetService
+
+  constructor(data: Data, service: BlindnetService) {
+    this.data = data
+    this.service = service
+  }
+
+  withMetadata(metadata: JsonObj) {
+    this.metadata = metadata
+    return this
+  }
+
+  forUser(userId: string) {
+    this.userIds = [userId]
+    return this
+  }
+
+  forUsers(userIds: string[]) {
+    this.userIds = userIds
+    return this
+  }
+
+  forGroup(groupId: string) {
+    this.groupId = groupId
+    return this
+  }
+
+  async encrypt(): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
+
+    // types lost when compiled to javascript
+    let data: Data, metadata: JsonObj
+    try {
+      data = this.data
+      if (this.metadata == undefined)
+        metadata = {}
+      else
+        metadata = this.metadata
+
+    } catch {
+      throw new error.BadFormatError('Data in bad format. Expected an object { data, metadata }')
+    }
+
+    if (data === null || data === undefined)
+      throw new error.BadFormatError('Data can\'t be undefined or null')
+    if (typeof metadata !== 'object')
+      throw new error.BadFormatError('Metadata has to be an object')
+
+    let dataBin: ArrayBuffer, dataType: DataType
+
+    if (typeof data === 'string') {
+      dataBin = util.str2bin(data)
+      dataType = { type: 'String' }
+
+    } else if (data instanceof File) {
+      dataBin = await data.arrayBuffer()
+      // file name is lost se it has to be stored explicitly
+      dataType = { type: 'File', name: data.name }
+
+    } else if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+      dataBin = data
+      dataType = { type: 'Binary' }
+
+    } else if (typeof data === 'object') {
+      dataBin = util.mapError(
+        () => util.str2bin(JSON.stringify(data)),
+        new error.BadFormatError('Data in bad format')
+      )
+      dataType = { type: 'Json' }
+
+    } else
+      throw new error.BadFormatError('Encryption of provided data format is not supported')
+
+    const dataTypeBin = util.str2bin(JSON.stringify(dataType))
+    const dataTypeLenBytes = util.to2Bytes(dataTypeBin.byteLength)
+    const metadataBin = util.str2bin(JSON.stringify(metadata))
+    const metadataLenBytes = util.to4Bytes(metadataBin.byteLength)
+
+    let resp: ServiceResponse<{ publicEncryptionKey: string, userID: string }[]>
+    if (this.userIds != null && Object.prototype.toString.call(this.userIds) === '[object Array]')
+      resp = await this.service.getPublicKeys(this.userIds)
+    else if (this.groupId != null && typeof this.groupId === 'string')
+      resp = await this.service.getGroupPublicKeys(this.groupId)
+    else
+      throw new error.NotEncryptabeError('You must specify a list of users or a group to encrypt the data for')
+
+    const users = validateServiceResponse(resp, 'Fetching public keys failed')
+
+    if (users.length == 0)
+      throw new error.NotEncryptabeError('Selected users not found')
+
+    const toEncrypt = util.concat(
+      new Uint8Array(dataTypeLenBytes),
+      new Uint8Array(metadataLenBytes),
+      dataTypeBin,
+      metadataBin,
+      dataBin
+    )
+
+    const dataKey = await util.mapErrorAsync(
+      () => c.generateRandomAESKey(),
+      new error.EncryptionError("Could not generate key")
+    )
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+
+    const encrypted = await util.mapErrorAsync(
+      () => c.encryptData(dataKey, iv, toEncrypt),
+      new error.EncryptionError("Could not encrypt data")
+    )
+
+    const encryptedUserKeys = await Promise.all(
+      users.map(async user => {
+
+        const PK = await util.mapErrorAsync(
+          () => c.importPublicKey(JSON.parse(util.bin2str(util.b64str2bin(user.publicEncryptionKey)))),
+          new error.EncryptionError("Public key in wrong format")
+        )
+
+        const encryptedDataKey = await util.mapErrorAsync(
+          () => c.wrapAESKey(dataKey, PK),
+          new error.EncryptionError("Could not encrypt data key")
+        )
+
+        return { userID: user.userID, encryptedSymmetricKey: util.bin2b64str(encryptedDataKey) }
+      }))
+
+    const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
+    const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
+
+    // string representation of dataId has 36 bytes (characters): 16 bytes x 2 for hex encoding and 4 hyphens
+    const encryptedData = util.concat(util.str2bin(dataId), iv.buffer, encrypted)
+
+    return { dataId, encryptedData }
+  }
 }
 
 class Blindnet {
@@ -22,60 +183,85 @@ class Blindnet {
   private keyStore: KeyStore
   private static protocolVersion: string = "1"
 
-  // #blindnet#
-  private prefix = [35, 98, 108, 105, 110, 100, 110, 101, 116, 35]
+  static apiUrl = 'https://api.blindnet.io'
+  static testUrl = 'https://test.blindnet.io'
+
+  static async testBrowser() {
+    try {
+      const aesKey = c.generateRandomAESKey()
+      if (!(aesKey instanceof Promise)) return false
+      const rsaKeyPair = await c.generateRandomRSAKeyPair()
+      const eccKeyPair = await c.generateRandomSigningKeyPair()
+
+      const keyStore = new IndexedDbKeyStore()
+      await keyStore.storeKey('test_key', aesKey)
+      await keyStore.storeKeys(rsaKeyPair.privateKey, rsaKeyPair.publicKey, eccKeyPair.privateKey, eccKeyPair.publicKey, aesKey)
+      const key = await keyStore.getKey('test_key')
+      if (!(key instanceof CryptoKey)) return false
+      const keys = await keyStore.getKeys()
+      if (
+        !(keys.eSK instanceof CryptoKey) ||
+        !(keys.ePK instanceof CryptoKey) ||
+        !(keys.sSK instanceof Uint8Array) ||
+        !(keys.sPK instanceof Uint8Array) ||
+        !(keys.aes instanceof CryptoKey)
+      ) return false
+      await keyStore.clear()
+    } catch (e) {
+      console.log(e)
+      return false
+    }
+
+    return true
+  }
 
   private constructor(service: BlindnetService, keyStore: KeyStore) {
     this.service = service
     this.keyStore = keyStore
   }
 
-  static initTest(service: BlindnetService, keyStore: KeyStore) {
+  static initCustomKeyStore(token: string, keyStore: KeyStore, apiUrl: string = Blindnet.apiUrl) {
+    const service = new BlindnetServiceHttp(token, apiUrl, Blindnet.protocolVersion)
     return new Blindnet(service, keyStore)
   }
 
-  static init(token: string, endpoint: string = 'https://api.blindnet.io') {
-    const service = new BlindnetServiceHttp(token, endpoint, Blindnet.protocolVersion)
+  static init(token: string, apiUrl: string = Blindnet.apiUrl) {
+    const service = new BlindnetServiceHttp(token, apiUrl, Blindnet.protocolVersion)
     const keyStore = new IndexedDbKeyStore()
     return new Blindnet(service, keyStore)
   }
 
-  static disconnect() {
-    (new IndexedDbKeyStore()).clear()
+  static async disconnect() {
+    await (new IndexedDbKeyStore()).clear()
+  }
+
+  async disconnect() {
+    this.service.clearToken()
+    await this.keyStore.clear()
   }
 
   refreshToken(token: string) {
-    this.service = new BlindnetServiceHttp(token, this.service.endpoint, Blindnet.protocolVersion)
+    this.service.updateToken(token)
   }
 
-  static async deriveSecrets(password: string): Promise<{ blindnetSecret: string, appSecret: string }> {
-    const passKey = await crypto.subtle.importKey(
-      "raw",
-      util.str2ab(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
+  static async deriveSecrets(seed: string): Promise<{ blindnetSecret: string, appSecret: string }> {
+    const { secret1, secret2 } = await c.deriveSecrets(seed)
+
+    const blindnetSecret = util.bin2b64str(secret1)
+    const appSecret = util.bin2b64str(secret2)
+
+    return { blindnetSecret, appSecret }
+  }
+
+  private async getKeys() {
+    const keys = await util.mapErrorAsync(
+      () => this.keyStore.getKeys(),
+      new error.UserNotInitializedError('Keys not initialized')
     )
+    if (Object.values(keys).length === 0 || Object.values(keys).some(x => x == undefined))
+      throw new error.UserNotInitializedError('Keys not initialized')
 
-    // TODO: bit derivation should be salted
-    // const salt = crypto.getRandomValues(new Uint8Array(16))
-    const salt = new Uint8Array([241, 211, 153, 239, 17, 34, 5, 112, 167, 218, 57, 131, 99, 29, 243, 84])
-
-    const derivedBits = await crypto.subtle.deriveBits(
-      {
-        "name": "PBKDF2",
-        salt: salt,
-        "iterations": 64206,
-        "hash": "SHA-256"
-      },
-      passKey,
-      512
-    )
-
-    const blindnetPassBits = new Uint8Array(derivedBits, 0, 32)
-    const appPassBits = new Uint8Array(derivedBits, 32, 32)
-
-    return { blindnetSecret: util.arr2b64(blindnetPassBits), appSecret: util.arr2b64(appPassBits) }
+    return keys
   }
 
   async connect(secret: string): Promise<void> {
@@ -86,667 +272,265 @@ class Blindnet {
 
     switch (getUserResp.type) {
       case 'UserNotFound': {
-        const encryptionKeyPair = await cryptoUtil.generateRandomRSAKeyPair(true)
-        const signSK = ed.utils.randomPrivateKey()
-        const signPK = await ed.getPublicKey(signSK)
+        const { privateKey: eSK, publicKey: ePK } = await c.generateRandomRSAKeyPair()
+        const { privateKey: sSK, publicKey: sPK } = await c.generateRandomSigningKeyPair()
 
-        const encryptionPK = await crypto.subtle.exportKey("spki", encryptionKeyPair.publicKey)
+        const encPKexp = util.str2bin(JSON.stringify(await c.exportPublicKey(ePK)))
+
+        const signedToken = await c.sign(this.service.token, sSK)
+        const signedEncPK = await c.sign(encPKexp, sSK)
 
         const salt = crypto.getRandomValues(new Uint8Array(16))
-        const aesKey = await cryptoUtil.deriveAESKey(secret, salt)
+        const aesKey = await c.deriveAESKey(secret, salt)
 
-        const signedJwt = await ed.sign(new Uint8Array(util.str2ab(this.service.jwt)), signSK)
-        const signedEncPK = await ed.sign(new Uint8Array(encryptionPK), signSK)
+        const enc_eSK = await c.wrapSecretKey(eSK, aesKey, new Uint8Array(12))
+        const enc_sSK = await c.encryptData(aesKey, new Uint8Array(12).map(_ => 1), util.concat(sSK, sPK))
 
-        // TODO
-        const iv = new Uint8Array(12)
-        const enc_encryptionSK = await cryptoUtil.wrapSecretKey(encryptionKeyPair.privateKey, aesKey, iv)
-        const enc_signSK = await crypto.subtle.encrypt(
-          { name: "AES-GCM", iv: iv },
-          aesKey,
-          util.concat(signSK, signPK)
-        )
-
-        const resp = await this.service.registerUser(encryptionPK, signPK, enc_encryptionSK, enc_signSK, salt, signedJwt, signedEncPK)
+        const resp = await this.service.registerUser(encPKexp, sPK, enc_eSK, enc_sSK, salt, signedToken, signedEncPK)
         validateServiceResponse(resp, 'User could not be registered')
 
-        await this.keyStore.storeKeys(encryptionKeyPair.privateKey, encryptionKeyPair.publicKey, signSK, signPK, aesKey)
+        await this.keyStore.storeKeys(eSK, ePK, sSK, sPK, aesKey)
+
         return undefined
       }
       case 'UserFound': {
         const { enc_PK, e_enc_SK, sign_PK, e_sign_SK, salt } = getUserResp.userData
 
-        const ePK = await crypto.subtle.importKey(
-          "spki",
-          util.b642arr(enc_PK),
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["encrypt"]
+        const ePK = await c.importPublicKey(JSON.parse(util.bin2str(util.b64str2bin(enc_PK))))
+        const aesKey = await c.deriveAESKey(secret, salt)
+
+        const eSK = await util.mapErrorAsync(
+          () => c.unwrapSecretKey(e_enc_SK, aesKey, new Uint8Array(12)),
+          new error.SecretError()
+        )
+        const sSK = await util.mapErrorAsync(
+          () => c.decryptData(aesKey, new Uint8Array(12).map(_ => 1), util.b64str2bin(e_sign_SK)),
+          new error.SecretError()
         )
 
-        const aesKey = await cryptoUtil.deriveAESKey(secret, util.b642arr(salt))
+        await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK).slice(0, 32), util.b64str2bin(sign_PK), aesKey)
 
-        const iv = new Uint8Array(12)
-
-        const eSK = await util.rethrowPromise(
-          () => crypto.subtle.unwrapKey(
-            "jwk",
-            util.b642arr(e_enc_SK),
-            aesKey,
-            { name: "AES-GCM", iv: iv },
-            { name: "RSA-OAEP", hash: "SHA-256" },
-            true,
-            ["decrypt", "unwrapKey"]
-          ),
-          new error.PasswordError()
-        )
-        const sSK =
-          await crypto.subtle.decrypt(
-            { name: "AES-GCM", iv: iv },
-            aesKey,
-            util.b642arr(e_sign_SK)
-          )
-
-        await this.keyStore.storeKeys(eSK, ePK, new Uint8Array(sSK).slice(0, 32), util.b642arr(sign_PK), aesKey)
         return undefined
       }
     }
   }
 
-  async encrypt(data: string | File | Bytes, metadata?: { [key: string]: any }): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
-
-    let metadataToEncrypt: any = metadata || {}
-    let dataToEncrypt
-
-    if (typeof metadataToEncrypt !== 'object')
-      throw new error.BadFormatError('Metadata has to be an object')
-
-    if (typeof data == 'string') {
-      dataToEncrypt = util.str2ab(data)
-      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'STRING' } }
-
-    } else if (data instanceof File) {
-      dataToEncrypt = await data.arrayBuffer()
-      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'FILE', name: data.name } }
-
-    } else if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
-      dataToEncrypt = data
-      metadataToEncrypt = { ...metadataToEncrypt, dataType: { type: 'BYTES' } }
-    } else {
-      throw new error.BadFormatError('Encryption of provided data format is not supported')
-    }
-
-    const metadataBytes = util.str2ab(JSON.stringify(metadataToEncrypt))
-
-    const resp = await this.service.getGroupPublicKeys()
-    const users = validateServiceResponse(resp, 'Fetching public keys failed')
-
-    if (users.length == 0)
-      throw new error.NotEncryptabeError()
-
-    const dataKey = await cryptoUtil.generateRandomAESKey(true)
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-
-    const metadataLenBytes = util.getInt64Bytes(metadataBytes.byteLength)
-    const allData = util.concat3(new Uint8Array(metadataLenBytes), metadataBytes, dataToEncrypt)
-
-    const encrypted = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv },
-      dataKey,
-      allData
-    )
-
-    const encryptedUserKeys = await Promise.all(
-      users.map(async user => {
-
-        const PK = await crypto.subtle.importKey(
-          "spki",
-          util.b642arr(user.publicEncryptionKey),
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["wrapKey"]
-        )
-
-        const encDataKey = await crypto.subtle.wrapKey(
-          "jwk",
-          dataKey,
-          PK,
-          { name: "RSA-OAEP" }
-        )
-
-        return { userID: user.userID, encryptedSymmetricKey: util.arr2b64(encDataKey) }
-      }))
-
-    const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
-    const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
-
-    // string representation of dataId has 36 bytes (characters): 16 bytes x 2 for hex encoding and 4 hyphens
-    const encryptedData = util.concat3(util.str2ab(dataId), iv.buffer, encrypted)
-
-    return { dataId, encryptedData }
+  capture(data: Data): CaptureBuilder {
+    return new CaptureBuilder(data, this.service)
   }
 
-  async encryptValues(data: { [key: string]: string }, noPrefix?: boolean): Promise<{ dataId: string, encryptedData: { [key: string]: string } }> {
+  async decrypt(encryptedData: ArrayBuffer): Promise<DecryptionResult> {
 
-    if (typeof data !== 'object')
-      throw new error.BadFormatError('Data has to be an object')
+    const { eSK } = await this.getKeys()
 
-    const resp = await this.service.getGroupPublicKeys()
-    const users = validateServiceResponse(resp, 'Fetching public keys failed')
-
-    if (users.length == 0)
-      throw new error.NotEncryptabeError()
-
-    const dataKey = await cryptoUtil.generateRandomAESKey(true)
-    const seedIv = crypto.getRandomValues(new Uint8Array(12))
-
-    const encryptedValues = await Promise.all(Object.entries(data).map(async field => {
-      const key = field[0]
-      const value = field[1]
-
-      const iv = new Uint8Array(await crypto.subtle.digest('SHA-256', util.concat(util.str2ab(key), seedIv))).slice(0, 12)
-
-      const encryptedValue = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        dataKey,
-        util.str2ab(value)
-      )
-
-      const concatenated = noPrefix
-        ? util.concat(iv, encryptedValue)
-        // [#blindnet# - 10 bytes] [size - 8 bytes] [iv - 12 bytes] [encrypted_data]
-        : util.concat3(new Uint8Array(this.prefix), new Uint8Array(util.getInt64Bytes(12 + encryptedValue.byteLength)), util.concat(iv, encryptedValue))
-
-      return { key, encryptedValue: util.bytesToHex(concatenated) }
-    }))
-
-    const encryptedUserKeys = await Promise.all(
-      users.map(async user => {
-
-        const PK = await crypto.subtle.importKey(
-          "spki",
-          util.b642arr(user.publicEncryptionKey),
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["wrapKey"]
-        )
-
-        const encDataKey = await crypto.subtle.wrapKey(
-          "jwk",
-          dataKey,
-          PK,
-          { name: "RSA-OAEP" }
-        )
-
-        return { userID: user.userID, encryptedSymmetricKey: util.arr2b64(encDataKey) }
-      }))
-
-    const postKeysResp = await this.service.postEncryptedKeys(encryptedUserKeys)
-    const dataId = validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
-
-    const encryptedData = encryptedValues.reduce((acc, cur) => {
-      return { ...acc, [cur.key]: cur.encryptedValue }
-    }, { dataId })
-
-    return { dataId, encryptedData }
-  }
-
-  async decrypt(encryptedData: Bytes): Promise<{ data: string | File | Bytes, metadata: { dataType: DataType, [key: string]: any; } }> {
-
-    const SK = await util.rethrowPromise(
-      () => this.keyStore.getKey('private_enc'),
-      new error.UserNotInitializedError('Private key not found')
+    const dataId = util.mapError(
+      () => util.bin2str(encryptedData.slice(0, 36)),
+      new error.BadFormatError("Bad data provided")
     )
-
-    const dataId = util.ab2str(encryptedData.slice(0, 36))
+    if (dataId.length !== 36) throw new error.BadFormatError("Bad data provided")
 
     const resp = await this.service.getDataKey(dataId)
-    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
+    const encryptedDataKey = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
 
-    if (eDataKeyResp.type === 'KeyNotFound')
-      throw new error.NoAccessError(`A user has no access to data with id ${dataId}`)
-
-    const eDataKey = eDataKeyResp.key
-
-    const dataKey = await util.rethrowPromise(
-      () => crypto.subtle.unwrapKey(
-        "jwk",
-        util.b642arr(eDataKey),
-        SK,
-        { name: "RSA-OAEP" },
-        { name: "AES-GCM", length: 256 },
-        false,
-        ['decrypt']
-      ),
+    const dataKey = await util.mapErrorAsync(
+      () => c.unwrapAESKey(util.b64str2bin(encryptedDataKey), eSK),
       new error.EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
     )
 
-    const allData = await util.rethrowPromise(
-      () => crypto.subtle.decrypt(
-        {
-          name: "AES-GCM",
-          iv: encryptedData.slice(36, 48),
-        },
-        dataKey,
-        encryptedData.slice(48)
-      ),
+    const decrypted = await util.mapErrorAsync(
+      () => c.decryptData(dataKey, encryptedData.slice(36, 48), encryptedData.slice(48)),
       new error.EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
     )
 
-    const metadataLen = util.intFromBytes(Array.from(new Uint8Array(allData.slice(0, 8))))
-    const metadataBytes = allData.slice(8, 8 + metadataLen)
-    const dataBytes = allData.slice(8 + metadataLen)
+    let dataBytes: ArrayBuffer, metadata: Metadata, dataType: DataType
+    try {
+      // decode lenght of data type
+      const dataTypeLen = util.from2Bytes(Array.from(new Uint8Array(decrypted.slice(0, 2))))
+      // parse data type
+      const dataTypeBytes = decrypted.slice(6, 6 + dataTypeLen)
+      dataType = JSON.parse(util.bin2str(dataTypeBytes))
 
-    const metadata = JSON.parse(util.ab2str(metadataBytes))
-    let data
+      // decode length of metadata
+      const metadataLen = util.from4Bytes(Array.from(new Uint8Array(decrypted.slice(2, 6))))
+      // parse metadata
+      const metadataBytes = decrypted.slice(6 + dataTypeLen, 6 + dataTypeLen + metadataLen)
+      metadata = JSON.parse(util.bin2str(metadataBytes))
 
-    if (metadata.dataType.type === 'STRING') {
-      data = util.ab2str(dataBytes)
-
-    } else if (metadata.dataType.type === 'FILE') {
-      data = new File([dataBytes], metadata.dataType.name)
-
-    } else if (metadata.dataType.type === 'BYTES') {
-      data = dataBytes
+      dataBytes = decrypted.slice(6 + dataTypeLen + metadataLen)
+    } catch {
+      throw new error.BadFormatError("Bad data provided")
     }
 
-    return { data: data, metadata: metadata }
+    switch (dataType.type) {
+      case 'String': {
+        const data = util.mapError(
+          () => util.bin2str(dataBytes),
+          new error.BadFormatError("Bad data provided")
+        )
+        return { data, metadata, dataType }
+      }
+
+      case 'File': {
+        const fileName = dataType.name
+        const data = util.mapError(
+          () => new File([dataBytes], fileName),
+          new error.BadFormatError("Bad data provided")
+        )
+        return { data, metadata, dataType }
+      }
+
+      case 'Binary':
+        return { data: dataBytes, metadata, dataType }
+
+      case 'Json': {
+        const data = util.mapError(
+          () => JSON.parse(util.bin2str(dataBytes)),
+          new error.BadFormatError("Bad data provided")
+        )
+        return { data, metadata, dataType }
+      }
+    }
   }
 
-  async decryptValues(encryptedData: { [key: string]: string }, noPrefix?: boolean): Promise<{ data: { [key: string]: string } }> {
+  // TODO: merge with decrypt
+  async decryptMany(encryptedData: ArrayBuffer[]): Promise<DecryptionResult[]> {
 
-    const SK = await util.rethrowPromise(
-      () => this.keyStore.getKey('private_enc'),
-      new error.UserNotInitializedError('Private key not found')
-    )
+    const { eSK } = await this.getKeys()
 
-    const dataId = encryptedData.dataId
-
-    if (dataId == undefined)
-      throw new error.EncryptionError('dataId field missing from the input data')
-
-    const resp = await this.service.getDataKey(dataId)
-    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
-
-    if (eDataKeyResp.type === 'KeyNotFound')
-      throw new error.NoAccessError(`A user has no access to data with id ${dataId}`)
-
-    const eDataKey = eDataKeyResp.key
-
-    const dataKey = await util.rethrowPromise(
-      () => crypto.subtle.unwrapKey(
-        "jwk",
-        util.b642arr(eDataKey),
-        SK,
-        { name: "RSA-OAEP" },
-        { name: "AES-GCM", length: 256 },
-        false,
-        ['decrypt']
-      ),
-      new error.EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
-    )
-
-    const decryptedValues = await Promise.all(Object.entries(encryptedData).filter(x => x[0] !== 'dataId').map(async field => {
-      const key = field[0]
-      const encValue = util.hexToBytes(field[1])
-
-      const iv = noPrefix
-        ? encValue.slice(0, 12)
-        : encValue.slice(this.prefix.length + 8, this.prefix.length + 8 + 12)
-
-      const encData = noPrefix
-        ? encValue.slice(12)
-        : encValue.slice(this.prefix.length + 8 + 12)
-
-      const decryptedValue = await util.rethrowPromise(
-        () => crypto.subtle.decrypt(
-          {
-            name: "AES-GCM",
-            iv: iv,
-          },
-          dataKey,
-          encData
-        ),
-        new error.EncryptionError(`Encrypted values with id ${dataId} could not be decrypted`)
+    const dataIds = encryptedData.map(ed => {
+      const dataId = util.mapError(
+        () => util.bin2str(ed.slice(0, 36)),
+        new error.BadFormatError(`Bad data provided`)
       )
-
-      return { key, decryptedValue: util.ab2str(decryptedValue) }
-    }))
-
-
-    const data: { [key: string]: string } = decryptedValues.reduce((acc, cur) => {
-      return { ...acc, [cur.key]: cur.decryptedValue }
-    }, {})
-
-    return { data: data }
-  }
-
-  async decryptStream(dataId: string, stream: ReadableStream<Uint8Array>): Promise<ReadableStream<Uint8Array>> {
-
-    const SK = await util.rethrowPromise(
-      () => this.keyStore.getKey('private_enc'),
-      new error.UserNotInitializedError('Private key not found')
-    )
-    const resp = await this.service.getDataKey(dataId)
-    const eDataKeyResp = validateServiceResponse(resp, `Fetching data key failed for data with id ${dataId}`)
-    if (eDataKeyResp.type === 'KeyNotFound')
-      throw new error.NoAccessError(`A user has no access to data with id ${dataId}`)
-    const eDataKey = eDataKeyResp.key
-
-    const dataKey = await util.rethrowPromise(
-      () => crypto.subtle.unwrapKey(
-        "jwk",
-        util.b642arr(eDataKey),
-        SK,
-        { name: "RSA-OAEP" },
-        { name: "AES-GCM", length: 256 },
-        false,
-        ['decrypt']
-      ),
-      new error.EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
-    )
-
-    const flag = [50, 51, 54, 50, 54, 67, 54, 57, 54, 69, 54, 52, 54, 69, 54, 53, 55, 52, 50, 51]
-
-    function magic(arr, obj) {
-
-      const { sf, fi, rl, il, bl, l, rd, dpi, di, d } = obj
-
-      let searchingFlag = sf == undefined ? true : sf
-      let flagIndex = fi == undefined ? 0 : fi
-
-      let readingLen = rl == undefined ? false : rl
-      let iLen = il == undefined ? 0 : il
-      let byteLen = bl == undefined ? [] : bl
-      let len = l
-
-      let readingData = rd == undefined ? false : rd
-      let dataPartIndex = dpi == undefined ? 0 : dpi
-      let dataIndex = di == undefined ? 0 : di
-      let data = d == undefined ? [] : d
-
-      let partStartIndex = 0
-      let parts = []
-
-      for (let i = 0; i < arr.length; i++) {
-
-        if (readingData) {
-          data.push(arr[i])
-          dataPartIndex++
-          if (dataPartIndex == len * 2) {
-            readingData = false
-            dataPartIndex = 0
-            len = 0
-            searchingFlag = true
-
-            const ddd = util.hexToBytes(util.ab2str(new Uint8Array(data)))
-
-            parts.push({ encrypted: true, value: ddd })
-
-            data = []
-            i++
-            partStartIndex = i
-          }
-        }
-
-        if (readingLen) {
-          byteLen.push(arr[i])
-          iLen++
-          if (iLen == 16) {
-            len = util.intFromBytes(util.hexToBytes(util.ab2str(new Uint8Array(byteLen).buffer)))
-            iLen = 0
-            byteLen = []
-            readingLen = false
-            readingData = true
-          }
-        }
-
-        if (searchingFlag) {
-          if (arr[i] == flag[flagIndex]) {
-            flagIndex++
-            if (flagIndex == flag.length) {
-              searchingFlag = false
-              flagIndex = 0
-              readingLen = true
-
-              if (i > flag.length) {
-                const part = arr.slice(partStartIndex, i - flag.length + 1)
-                if (part.length > 0) {
-                  parts.push({ encrypted: false, value: part })
-                }
-              }
-            }
-          } else {
-            flagIndex = 0
-          }
-        }
-
-      }
-
-      const reading = readingLen || readingData
-
-      if (!reading) {
-        const part = arr.slice(partStartIndex, arr.length - flagIndex)
-        if (part.length > 0) {
-          parts.push({ encrypted: false, value: part })
-        }
-        // if (flagIndex > 0) {
-        //   midFlag = true
-        // }
-      }
-
-      return {
-        reading,
-        parts,
-        sf: searchingFlag,
-        fi: flagIndex,
-        rl: readingLen,
-        il: iLen,
-        bl: byteLen,
-        l: len,
-        rd: readingData,
-        dpi: dataPartIndex,
-        di: dataIndex,
-        d: data,
-      }
-    }
-
-    let obj: { parts: { encrypted: boolean, value: Uint8Array }[] } = { parts: [] }
-
-    const reader = stream.getReader()
-
-    const newStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        return pump()
-
-        async function pump() {
-          const { done, value } = await reader.read()
-
-          if (done) { controller.close(); return; }
-
-          obj = magic(value, obj)
-
-          for (let i = 0; i < obj.parts.length; i++) {
-            const { encrypted, value } = obj.parts[i]
-
-            if (encrypted) {
-              const [iv, encData] = [value.slice(0, 12), value.slice(12)]
-
-              const decryptedValue = await util.rethrowPromise(
-                () => crypto.subtle.decrypt(
-                  {
-                    name: "AES-GCM",
-                    iv: iv,
-                  },
-                  dataKey,
-                  encData
-                ),
-                new error.EncryptionError(`Encrypted values with id ${dataId} could not be decrypted`)
-              )
-
-              controller.enqueue(new Uint8Array(decryptedValue))
-
-            } else {
-              controller.enqueue(value)
-            }
-          }
-
-          return pump()
-        }
-      }
+      if (dataId.length !== 36) throw new error.BadFormatError(`Bad data provided`)
+      return dataId
     })
 
-    return newStream
-  }
+    const resp = await this.service.getDataKeys(dataIds)
+    const encryptedKeys = validateServiceResponse(
+      resp,
+      `Fetching data keys failed for ids ${dataIds}`,
+      keys => dataIds.every(d => keys.find(k => k.documentID === d))
+    )
 
-  // TODO: refactor repeating code
-  async changeSecret(newPassword: string, oldPassword?: string): Promise<void> {
+    const res: Promise<DecryptionResult[]> = Promise.all(
+      encryptedData.map((async (ed, i) => {
+        const dataId = dataIds[i]
 
-    if (oldPassword == undefined) {
-
-      const eSK = await util.rethrowPromise(
-        () => this.keyStore.getKey('private_enc'),
-        new error.UserNotInitializedError('Private key not found')
-      )
-      const sSK = await util.rethrowPromise(
-        () => this.keyStore.getSignKey('private_sign'),
-        new error.UserNotInitializedError('Private key not found')
-      )
-      const curPassKey = await util.rethrowPromise(
-        () => this.keyStore.getKey('derived'),
-        new error.UserNotInitializedError('Password derived key not found')
-      )
-
-      const salt = crypto.getRandomValues(new Uint8Array(16))
-      const newPassKey = await cryptoUtil.deriveAESKey(newPassword, salt)
-      // TODO:
-      const iv = new Uint8Array(12)
-      const encryptedESK = await cryptoUtil.wrapSecretKey(eSK, newPassKey, iv)
-      const encryptedSSK = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        newPassKey,
-        sSK
-      )
-
-      const resp = await this.service.updateUser(encryptedESK, encryptedSSK, salt)
-      validateServiceResponse(resp, 'Could not upload the new keys')
-
-      await this.keyStore.storeKey('derived', newPassKey)
-
-      return undefined
-    } else {
-
-      const resp = await this.service.getUserData()
-      const getUserResp = validateServiceResponse(resp, 'Fetching user data failed')
-
-      // TODO
-      if (getUserResp.type == 'UserNotFound')
-        throw new error.UserNotFoundError('')
-
-      const { enc_PK, e_enc_SK, sign_PK, e_sign_SK, salt } = getUserResp.userData
-
-      const ePK = await crypto.subtle.importKey(
-        "spki",
-        util.b642arr(enc_PK),
-        { name: "RSA-OAEP", hash: "SHA-256" },
-        true,
-        ["encrypt"]
-      )
-
-      const aesKey = await cryptoUtil.deriveAESKey(oldPassword, util.b642arr(salt))
-
-      const iv = new Uint8Array(12)
-
-      const eSK = await util.rethrowPromise(
-        () => crypto.subtle.unwrapKey(
-          "jwk",
-          util.b642arr(e_enc_SK),
-          aesKey,
-          { name: "AES-GCM", iv: iv },
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          true,
-          ["decrypt", "unwrapKey"]
-        ),
-        new error.PasswordError()
-      )
-      const sSK =
-        await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: iv },
-          aesKey,
-          util.b642arr(e_sign_SK)
+        const dataKey = await util.mapErrorAsync(
+          () => c.unwrapAESKey(util.b64str2bin(encryptedKeys.find(ek => ek.documentID === dataId).encryptedSymmetricKey), eSK),
+          new error.EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
         )
 
-      const newSalt = crypto.getRandomValues(new Uint8Array(16))
-      const newPassKey = await cryptoUtil.deriveAESKey(newPassword, newSalt)
-      // TODO:
-      const newIv = new Uint8Array(12)
-      const encryptedESK = await cryptoUtil.wrapSecretKey(eSK, newPassKey, newIv)
-      const encryptedSSK = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: newIv },
-        newPassKey,
-        sSK
-      )
+        const decrypted = await util.mapErrorAsync(
+          () => c.decryptData(dataKey, ed.slice(36, 48), ed.slice(48)),
+          new error.EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
+        )
 
-      const updateUserResp = await this.service.updateUser(encryptedESK, encryptedSSK, newSalt)
-      validateServiceResponse(updateUserResp, 'Could not upload the new keys')
+        let dataBytes: ArrayBuffer, metadata: Metadata, dataType: DataType
+        try {
+          // decode lenght of data type
+          const dataTypeLen = util.from2Bytes(Array.from(new Uint8Array(decrypted.slice(0, 2))))
+          // parse data type
+          const dataTypeBytes = decrypted.slice(6, 6 + dataTypeLen)
+          dataType = JSON.parse(util.bin2str(dataTypeBytes))
 
-      await this.keyStore.storeKey('derived', newPassKey)
+          // decode length of metadata
+          const metadataLen = util.from4Bytes(Array.from(new Uint8Array(decrypted.slice(2, 6))))
+          // parse metadata
+          const metadataBytes = decrypted.slice(6 + dataTypeLen, 6 + dataTypeLen + metadataLen)
+          metadata = JSON.parse(util.bin2str(metadataBytes))
 
-      return undefined
-    }
+          dataBytes = decrypted.slice(6 + dataTypeLen + metadataLen)
+        } catch {
+          throw new error.BadFormatError(`Bad data provided for id ${dataId}`)
+        }
+
+        switch (dataType.type) {
+          case 'String': {
+            const data = util.mapError(
+              () => util.bin2str(dataBytes),
+              new error.BadFormatError("Bad data provided")
+            )
+            return { data, metadata, dataType }
+          }
+
+          case 'File': {
+            const fileName = dataType.name
+            const data = util.mapError(
+              () => new File([dataBytes], fileName),
+              new error.BadFormatError("Bad data provided")
+            )
+            return { data, metadata, dataType }
+          }
+
+          case 'Binary':
+            return { data: dataBytes, metadata, dataType }
+
+          case 'Json': {
+            const data = util.mapError(
+              () => JSON.parse(util.bin2str(dataBytes)),
+              new error.BadFormatError("Bad data provided")
+            )
+            return { data, metadata, dataType }
+          }
+        }
+      }
+      ))
+    )
+
+    return res
+  }
+
+  async changeSecret(newSecret: string, oldSecret?: string): Promise<void> {
+
+    const { eSK, sSK } = await this.getKeys()
+
+    const new_salt = crypto.getRandomValues(new Uint8Array(16))
+    const new_aesKey = await c.deriveAESKey(newSecret, new_salt)
+
+    const enc_eSK = await c.wrapSecretKey(eSK, new_aesKey, new Uint8Array(12))
+    const enc_sSK = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: new Uint8Array(12).map(_ => 1) },
+      new_aesKey,
+      sSK
+    )
+
+    const updateUserResp = await this.service.updateUser(enc_eSK, enc_sSK, new_salt)
+    validateServiceResponse(updateUserResp, 'Could not upload the new keys')
+
+    await this.keyStore.storeKey('derived', new_aesKey)
   }
 
   async giveAccess(userId: string): Promise<void> {
 
-    const SK = await util.rethrowPromise(
-      () => this.keyStore.getKey('private_enc'),
-      new error.UserNotInitializedError('Private key not found')
-    )
+    const { eSK } = await this.getKeys()
 
     const resp1 = await this.service.getUsersPublicKey(userId)
-    const userPKResp = validateServiceResponse(resp1, `Fetching the public key of a user ${userId} failed`)
+    const user = validateServiceResponse(resp1, `Fetching the public key of a user ${userId} failed`)
 
-    if (userPKResp.type == 'UserNotFound') {
-      throw new error.UserNotFoundError(`User ${userId} not registered.`)
-    }
-
-    const resp2 = await this.service.getDataKeys()
+    const resp2 = await this.service.getAllDataKeys()
     const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys failed`)
 
-    const userPKspki = userPKResp.publicEncryptionKey
-
-    const userPK = await crypto.subtle.importKey(
-      "spki",
-      util.b642arr(userPKspki),
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      false,
-      ["wrapKey"]
+    const userPK = await util.mapErrorAsync(
+      () => c.importPublicKey(JSON.parse(util.bin2str(util.b64str2bin(user.publicEncryptionKey)))),
+      new error.EncryptionError('Public key in wrong format')
     )
 
     const updatedKeys = await Promise.all(
       encryptedDataKeys.map(async edk => {
 
-        const dataKey = await util.rethrowPromise(
-          () => crypto.subtle.unwrapKey(
-            "jwk",
-            util.b642arr(edk.encryptedSymmetricKey),
-            SK,
-            { name: "RSA-OAEP" },
-            { name: "AES-GCM", length: 256 },
-            true,
-            ['decrypt']
-          ),
+        const dataKey = await util.mapErrorAsync(
+          () => c.unwrapAESKey(edk.encryptedSymmetricKey, eSK),
           new error.EncryptionError(`Could not decrypt a data key for data id ${edk.documentID}`)
         )
 
-        const newDataKey = await crypto.subtle.wrapKey(
-          "jwk",
-          dataKey,
-          userPK,
-          { name: "RSA-OAEP" }
+        const newDataKey = await util.mapErrorAsync(
+          () => c.wrapAESKey(dataKey, userPK),
+          new error.EncryptionError(`Could not encrypt data key for user ${userId}`)
         )
 
-        return { documentID: edk.documentID, encryptedSymmetricKey: util.arr2b64(newDataKey) }
+        return { documentID: edk.documentID, encryptedSymmetricKey: util.bin2b64str(newDataKey) }
       }))
 
     const updateResp = await this.service.giveAccess(userId, updatedKeys)
@@ -756,13 +540,15 @@ class Blindnet {
   }
 }
 
-export default {
+const helper = {
+  toBase64: util.bin2b64str,
+  fromBase64: util.b64str2bin,
+  toHex: util.bin2Hex,
+  fromHex: util.hex2bin
+}
+
+export {
   Blindnet,
-  util: {
-    toBase64: util.arr2b64,
-    fromBase64: util.b642arr,
-    toHex: util.bytesToHex,
-    fromHex: util.hexToBytes
-  },
+  helper as util,
   error
 }

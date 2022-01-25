@@ -1,5 +1,5 @@
 class AuthenticationError extends Error {
-  code = 1
+  code = 'blindnet.authentication'
   constructor() {
     super('Authentication to blindnet failed. Please generate a valid token.')
     this.name = 'AuthenticationError'
@@ -9,7 +9,7 @@ class AuthenticationError extends Error {
 }
 
 class UserNotInitializedError extends Error {
-  code = 2
+  code = 'blindnet.user_not_initialized'
   constructor(message: string) {
     super(message)
     this.name = 'UserNotInitializedError'
@@ -18,18 +18,28 @@ class UserNotInitializedError extends Error {
   }
 }
 
-class PasswordError extends Error {
-  code = 3
+class SecretError extends Error {
+  code = 'blindnet.secret'
   constructor() {
-    super('Wrong password provided.')
-    this.name = 'PasswordError'
+    super('Wrong secret provided.')
+    this.name = 'SecretError'
+
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+class BadFormatError extends Error {
+  code = 'blindnet.data_format'
+  constructor(message: string) {
+    super(message)
+    this.name = 'BadFormatError'
 
     Object.setPrototypeOf(this, new.target.prototype)
   }
 }
 
 class EncryptionError extends Error {
-  code = 4
+  code = 'blindnet.encryption'
   constructor(message: string) {
     super(message)
     this.name = 'EncryptionError'
@@ -39,7 +49,7 @@ class EncryptionError extends Error {
 }
 
 class BlindnetServiceError extends Error {
-  code = 5
+  code = 'blindnet.service'
   constructor(message: string) {
     super(message)
     this.name = 'BlindnetServiceError'
@@ -49,9 +59,9 @@ class BlindnetServiceError extends Error {
 }
 
 class NotEncryptabeError extends Error {
-  code = 6
-  constructor() {
-    super('No users to encrypt the data to')
+  code = 'blindnet.not_encryptable'
+  constructor(message: string) {
+    super(message)
     this.name = 'NotEncryptabeError'
 
     Object.setPrototypeOf(this, new.target.prototype)
@@ -78,20 +88,10 @@ class UserNotFoundError extends Error {
   }
 }
 
-class BadFormatError extends Error {
-  code = 9
-  constructor(message: string) {
-    super(message)
-    this.name = 'BadFormatError'
-
-    Object.setPrototypeOf(this, new.target.prototype)
-  }
-}
-
 export {
   AuthenticationError,
   UserNotInitializedError,
-  PasswordError,
+  SecretError,
   EncryptionError,
   BlindnetServiceError,
   NotEncryptabeError,

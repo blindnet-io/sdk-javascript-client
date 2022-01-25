@@ -4,28 +4,54 @@ import typescript from 'rollup-plugin-typescript2'
 import { terser } from "rollup-plugin-terser"
 import pkg from './package.json'
 
-const common = {
-	input: 'src/index.ts',
-	plugins: [
-		resolve({
-			browser: true,
-			extensions: ['.ts', '.js'],
-			preferBuiltins: false
-		}),
-		commonjs(),
-		typescript(),
-	]
-}
-
 export default [
 	{
-		...common,
+		input: 'src/index.ts',
 		output: [
-			{ name: 'blindnet', file: pkg.main, format: 'umd' }
+			{ name: 'blindnet', file: pkg.browser, format: 'umd' }
 		],
 		plugins: [
-			...common.plugins,
+			resolve({
+				browser: true,
+				extensions: ['.ts', '.js'],
+				preferBuiltins: false
+			}),
+			commonjs(),
+			typescript(),
 			terser()
+		]
+	},
+	{
+		input: 'src/index.ts',
+		external: [
+			'crypto'
+		],
+		output: [
+			{ file: pkg.module, format: 'es' }
+		],
+		plugins: [
+			resolve({
+				browser: true,
+				extensions: ['.ts', '.js'],
+				preferBuiltins: false
+			}),
+			commonjs(),
+			typescript(),
+		]
+	},
+	{
+		input: 'src/index.ts',
+		output: [
+			{ file: pkg.main, format: 'cjs' }
+		],
+		plugins: [
+			resolve({
+				browser: true,
+				extensions: ['.ts', '.js'],
+				preferBuiltins: false
+			}),
+			commonjs(),
+			typescript(),
 		]
 	}
 ]
