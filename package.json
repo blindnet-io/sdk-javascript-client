@@ -2,7 +2,9 @@
   "name": "@blindnet/sdk-javascript",
   "version": "0.1.4",
   "description": "The javascript web client SDK for blindnet.",
-  "main": "lib/index.umd.js",
+  "main": "lib/index.cjs.js",
+  "module": "lib/index.esm.js",
+  "browser": "lib/index.umd.js",
   "types": "lib/index.d.ts",
   "files": [
     "lib"
@@ -14,7 +16,8 @@
     "build": "npm run clean && rollup -c"
   },
   "keywords": [
-    "blindnet"
+    "blindnet",
+    "sdk"
   ],
   "author": "blindnet",
   "homepage": "https://blindnet.io",
@@ -37,7 +40,8 @@
     "chai": "^4.3.4",
     "chai-as-promised": "^7.1.1",
     "husky": "^6.0.0",
-    "mocha": "^8.3.2",
+    "mocha": "^9.2.0",
+    "mockttp": "^2.4.0",
     "rimraf": "^3.0.2",
     "rollup": "^2.47.0",
     "rollup-plugin-commonjs": "^9.2.0",

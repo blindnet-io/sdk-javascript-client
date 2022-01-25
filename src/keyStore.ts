@@ -1,35 +1,49 @@
-import {
-  get,
-  set,
-  setMany,
-  clear,
-  createStore,
-} from 'idb-keyval'
+import * as idb from 'idb-keyval'
+
+type Keys = {
+  eSK: CryptoKey,
+  ePK: CryptoKey,
+  sSK: Uint8Array,
+  sPK: Uint8Array,
+  aes: CryptoKey
+}
 
 interface KeyStore {
   storeKey: (type: string, key: CryptoKey) => Promise<void>
-  storeKeys: (privateEnc: CryptoKey, publicEnc: CryptoKey, privateSign: Uint8Array, publicSign: Uint8Array, aes: CryptoKey) => Promise<void>
+  storeKeys: (eSK: CryptoKey, ePK: CryptoKey, sSK: Uint8Array, sPK: Uint8Array, aes: CryptoKey) => Promise<void>
   getKey: (type: 'private_enc' | 'public_enc' | 'derived') => Promise<CryptoKey>
   getSignKey: (type: 'private_sign' | 'public_sign') => Promise<Uint8Array>
+  getKeys: () => Promise<Keys>
   clear: () => Promise<void>
 }
 
 class IndexedDbKeyStore implements KeyStore {
-  store = createStore('blindnetKeys', 'keys')
+  keys = ['private_enc', 'public_enc', 'private_sign', 'public_sign', 'derived']
+  keyLabels = ['eSK', 'ePK', 'sSK', 'sPK', 'aes']
+
+  private store: idb.UseStore
+
+  constructor(storeName: string = 'keys') {
+    this.store = idb.createStore('blindnet', storeName)
+  }
 
   storeKey = (type, key) =>
-    set(type, key, this.store)
+    idb.set(type, key, this.store)
 
-  storeKeys = (privateEnc, publicEnc, privateSign, publicSign, aes) =>
-    setMany([['private_enc', privateEnc], ['public_enc', publicEnc], ['private_sign', privateSign], ['public_sign', publicSign], ['derived', aes]], this.store)
+  storeKeys = (eSK, ePK, sSK, sPK, aes) =>
+    idb.setMany([['private_enc', eSK], ['public_enc', ePK], ['private_sign', sSK], ['public_sign', sPK], ['derived', aes]], this.store)
 
   getKey = (type) =>
-    get(type, this.store)
+    idb.get(type, this.store)
 
   getSignKey = (type) =>
-    get(type, this.store)
+    idb.get(type, this.store)
 
-  clear = () => clear(this.store)
+  getKeys = () =>
+    idb.getMany(this.keys, this.store)
+      .then(res => res.reduce((acc, cur, i) => ({ ...acc, [this.keyLabels[i]]: cur }), {}))
+
+  clear = () => idb.clear(this.store)
 }
 
 export {
