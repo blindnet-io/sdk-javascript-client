@@ -34,7 +34,7 @@ interface BlindnetService {
   postEncryptedKeys: (encryptedKeys: { userID: string, encryptedSymmetricKey: string }[]) => Promise<ServiceResponse<string>>
   getDataKey: (dataId: string) => Promise<ServiceResponse<string>>
   getAllDataKeys: () => Promise<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>>
-  getDataKeys: (dataIds?: string[]) => Promise<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>>
+  getDataKeys: (dataIds: string[]) => Promise<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>>
   updateUser: (esk: ArrayBuffer, ssk: ArrayBuffer, salt: Uint8Array) => Promise<ServiceResponse<void>>
   giveAccess: (userId: string, docKeys: { documentID: string, encryptedSymmetricKey: string }[]) => Promise<ServiceResponse<void>>
 
