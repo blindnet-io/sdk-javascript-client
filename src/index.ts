@@ -188,12 +188,13 @@ class Blindnet {
 
   static async testBrowser() {
     try {
-      const aesKey = c.generateRandomAESKey()
-      if (!(aesKey instanceof Promise)) return false
+      const aesKeyP = c.generateRandomAESKey()
+      if (!(aesKeyP instanceof Promise)) return false
+      const aesKey = await aesKeyP
       const rsaKeyPair = await c.generateRandomRSAKeyPair()
       const eccKeyPair = await c.generateRandomSigningKeyPair()
 
-      const keyStore = new IndexedDbKeyStore()
+      const keyStore = new IndexedDbKeyStore('keys_test')
       await keyStore.storeKey('test_key', aesKey)
       await keyStore.storeKeys(rsaKeyPair.privateKey, rsaKeyPair.publicKey, eccKeyPair.privateKey, eccKeyPair.publicKey, aesKey)
       const key = await keyStore.getKey('test_key')
@@ -208,7 +209,7 @@ class Blindnet {
       ) return false
       await keyStore.clear()
     } catch (e) {
-      console.log(e)
+      console.error(e)
       return false
     }
 
