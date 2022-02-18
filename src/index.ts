@@ -194,7 +194,8 @@ class Blindnet {
       const rsaKeyPair = await c.generateRandomRSAKeyPair()
       const eccKeyPair = await c.generateRandomSigningKeyPair()
 
-      const keyStore = new IndexedDbKeyStore('keys_test')
+      const keyStore = new IndexedDbKeyStore('blindnet_test')
+      await keyStore.clear()
       await keyStore.storeKey('test_key', aesKey)
       await keyStore.storeKeys(rsaKeyPair.privateKey, rsaKeyPair.publicKey, eccKeyPair.privateKey, eccKeyPair.publicKey, aesKey)
       const key = await keyStore.getKey('test_key')

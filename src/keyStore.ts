@@ -23,8 +23,8 @@ class IndexedDbKeyStore implements KeyStore {
 
   private store: idb.UseStore
 
-  constructor(storeName: string = 'keys') {
-    this.store = idb.createStore('blindnet', storeName)
+  constructor(dbName: string = 'blindnet', storeName: string = 'keys') {
+    this.store = idb.createStore(dbName, storeName)
   }
 
   storeKey = (type, key) =>
