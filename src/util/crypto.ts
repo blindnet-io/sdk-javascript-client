@@ -1,5 +1,10 @@
 import * as ed from 'noble-ed25519'
-import { str2bin, b64str2bin } from './util'
+import { str2bin, b64str2bin, concat } from './index'
+
+export async function deriveIv(iv: Uint8Array, i: number) {
+  const hash = await crypto.subtle.digest('SHA-256', concat(iv, Uint8Array.from([i])))
+  return new Uint8Array(hash).slice(0, 12)
+}
 
 export async function deriveAESKey(password: string, salt: ArrayBuffer | string, extractable: boolean = false): Promise<CryptoKey> {
   const s = typeof salt === 'string' ? b64str2bin(salt) : salt
@@ -28,7 +33,12 @@ export async function deriveAESKey(password: string, salt: ArrayBuffer | string,
   return aesKey
 }
 
-export async function deriveSecrets(seed: string): Promise<{ secret1: ArrayBuffer, secret2: ArrayBuffer }> {
+// TODO: handle salting
+export async function deriveSecrets(
+  seed: string,
+  salt: Uint8Array = new Uint8Array([241, 211, 153, 239, 17, 34, 5, 112, 167, 218, 57, 131, 99, 29, 243, 84])
+): Promise<{ secret1: ArrayBuffer, secret2: ArrayBuffer }> {
+
   const s = (seed.length === 0 || seed == undefined) ? 'seed' : seed
 
   const passKey = await crypto.subtle.importKey(
@@ -38,9 +48,6 @@ export async function deriveSecrets(seed: string): Promise<{ secret1: ArrayBuffe
     false,
     ["deriveBits"]
   )
-
-  // TODO: bit derivation should be salted
-  const salt = new Uint8Array([241, 211, 153, 239, 17, 34, 5, 112, 167, 218, 57, 131, 99, 29, 243, 84])
 
   const derivedBits = await crypto.subtle.deriveBits(
     {

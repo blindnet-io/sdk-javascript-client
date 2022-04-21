@@ -1,4 +1,4 @@
-import { KeyStore } from '../src/keyStore'
+import { KeyStore } from '../src/storage/KeyStore'
 
 class TestKeyStore implements KeyStore {
   store = {}

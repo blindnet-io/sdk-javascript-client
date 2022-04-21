@@ -1,8 +1,9 @@
-import { KeyStore, IndexedDbKeyStore } from './keyStore'
-import { BlindnetService, BlindnetServiceHttp, ServiceResponse } from './blindnetService'
+import { KeyStore, IndexedDbKeyStore } from './storage/KeyStore'
+import { BlindnetService, BlindnetServiceHttp, ServiceResponse } from './services/BlindnetService'
 import * as error from './error'
 import * as util from './util'
-import * as c from './crypto'
+import * as c from './util/crypto'
+import { AzureStorageService, StorageService } from './services/StorageService'
 
 type JsonPrim = string | number | boolean | Array<JsonPrim> | { [key: string]: JsonPrim }
 type JsonObj = { [key: string]: JsonPrim }
@@ -13,7 +14,7 @@ type Metadata = JsonObj
 type DataType =
   | { type: 'String' }
   | { type: 'Json' }
-  | { type: 'File', name: string }
+  | { type: 'File', name: string, size?: number }
   | { type: 'Binary' }
 
 type DecryptionResult =
@@ -29,10 +30,8 @@ function validateServiceResponse<T>(
 ): T {
   if (resp.type === 'AuthenticationNeeded')
     throw new error.AuthenticationError()
-  else if (resp.type === 'Failed')
+  else if (resp.type === 'Failed' || !isValid(resp.data))
     throw new error.BlindnetServiceError(errorMsg)
-  else if (!isValid(resp.data))
-    throw new error.BlindnetServiceError("Data returned from server not valid")
   else
     return resp.data
 }
@@ -44,10 +43,13 @@ class CaptureBuilder {
   private groupId: string
 
   service: BlindnetService
+  storageService: StorageService
 
-  constructor(data: Data, service: BlindnetService) {
+  constructor(data: Data, service: BlindnetService, storageService: StorageService) {
     this.data = data
+    this.metadata = {}
     this.service = service
+    this.storageService = storageService
   }
 
   withMetadata(metadata: JsonObj) {
@@ -72,18 +74,7 @@ class CaptureBuilder {
 
   async encrypt(): Promise<{ dataId: string, encryptedData: ArrayBuffer }> {
 
-    // types lost when compiled to javascript
-    let data: Data, metadata: JsonObj
-    try {
-      data = this.data
-      if (this.metadata == undefined)
-        metadata = {}
-      else
-        metadata = this.metadata
-
-    } catch {
-      throw new error.BadFormatError('Data in bad format. Expected an object { data, metadata }')
-    }
+    const { data, metadata } = this
 
     if (data === null || data === undefined)
       throw new error.BadFormatError('Data can\'t be undefined or null')
@@ -176,10 +167,131 @@ class CaptureBuilder {
 
     return { dataId, encryptedData }
   }
+
+  async store(): Promise<{ dataId: string }> {
+
+    const { data, metadata } = this
+
+    if (!(data instanceof File))
+      throw new error.BadFormatError('Only files are supported')
+    if (typeof metadata !== 'object')
+      throw new error.BadFormatError('Metadata has to be an object')
+
+    // generate key
+    const dataKey = await util.mapErrorAsync(
+      () => c.generateRandomAESKey(),
+      new error.EncryptionError("Could not generate key")
+    )
+
+    // get public keys
+    let getPublicKeysResp: ServiceResponse<{ publicEncryptionKey: string, userID: string }[]>
+    if (this.userIds != null && Object.prototype.toString.call(this.userIds) === '[object Array]')
+      getPublicKeysResp = await this.service.getPublicKeys(this.userIds)
+    else if (this.groupId != null && typeof this.groupId === 'string')
+      getPublicKeysResp = await this.service.getGroupPublicKeys(this.groupId)
+    else
+      throw new error.NotEncryptabeError('You must specify a list of users or a group to encrypt the data for')
+
+    const users = validateServiceResponse(getPublicKeysResp, 'Fetching public keys failed')
+
+    // get data_id from the server
+    const initUploadResp = await this.service.initializeUpload()
+    const { dataId } = validateServiceResponse(initUploadResp, 'Upload initialization failed')
+
+    // encrypt data key for each user
+    const encryptedUserKeys = await Promise.all(
+      users.map(async user => {
+
+        const PK = await util.mapErrorAsync(
+          () => c.importPublicKey(JSON.parse(util.bin2str(util.b64str2bin(user.publicEncryptionKey)))),
+          new error.EncryptionError("Public key in wrong format")
+        )
+
+        const encryptedDataKey = await util.mapErrorAsync(
+          () => c.wrapAESKey(dataKey, PK),
+          new error.EncryptionError("Could not encrypt data key")
+        )
+
+        return { userID: user.userID, encryptedSymmetricKey: util.bin2b64str(encryptedDataKey) }
+      }))
+
+    const postKeysResp = await this.service.postEncryptedKeysForData(encryptedUserKeys, dataId)
+    validateServiceResponse(postKeysResp, 'Could not upload the encrypted public keys')
+
+    const dataType = { type: 'File', name: data.name, size: data.size }
+    const dataTypeBin = util.str2bin(JSON.stringify(dataType))
+    const dataTypeLenBytes = util.to2Bytes(dataTypeBin.byteLength)
+    const metadataBin = util.str2bin(JSON.stringify(metadata))
+
+    const toEncrypt = util.concat(
+      new Uint8Array(dataTypeLenBytes),
+      dataTypeBin,
+      metadataBin
+    )
+
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+
+    // encrypt metadata
+    const encryptedMetadata = await util.mapErrorAsync(
+      () => c.encryptData(dataKey, iv, toEncrypt),
+      new error.EncryptionError("Could not encrypt data")
+    )
+      .then(enc => util.concat(iv.buffer, enc))
+
+    const storeMetadataResp = await this.service.storeMetadata(dataId, util.bin2b64str(encryptedMetadata))
+    validateServiceResponse(storeMetadataResp, 'Could not store metadata')
+
+    // chunk_size
+    const blockSize = 4000000
+
+    // traverse file (offset -> 0 to file size)
+    // - slice chunk -> file.slice(offset, offset + chunk_size)
+    // - enc -> encrypt(chunk, key, hash([...iv, i]).slice(0, 12))
+    // - upload enc
+    // - store locally block_id
+    async function uploadBlocks(
+      i: number,
+      offset: number,
+      dataId: string,
+      file: File,
+      blockIds: string[],
+      service: BlindnetService,
+      storageService: StorageService
+    ) {
+
+      if (offset >= file.size) return blockIds
+
+      const filePart = await file.slice(offset, offset + blockSize).arrayBuffer()
+
+      const partIv = await c.deriveIv(iv, i)
+
+      const encryptedPart: ArrayBuffer = await util.mapErrorAsync(
+        () => c.encryptData(dataKey, partIv, filePart),
+        new error.EncryptionError("Could not encrypt data")
+      )
+
+      const uploadBlockUrlResp = await service.getUploadBlockUrl(dataId, encryptedPart.byteLength)
+      const { blockId, date, authorization, url } = validateServiceResponse(uploadBlockUrlResp, 'Could not get upload url')
+
+      const uploadRes = await storageService.uploadBlock(url, authorization, date, encryptedPart)
+      validateServiceResponse(uploadRes, 'Could not upload data part')
+
+      return uploadBlocks(i + 1, offset + blockSize, dataId, file, [...blockIds, blockId], service, storageService)
+    }
+
+    const blockIds = await uploadBlocks(0, 0, dataId, data, [], this.service, this.storageService)
+
+    // commit
+    const finishUploadResp = await this.service.finishUpload(dataId, blockIds)
+    validateServiceResponse(finishUploadResp, 'Could not get upload url')
+
+    return { dataId }
+  }
 }
 
 class Blindnet {
   private service: BlindnetService
+  private storageService: StorageService
   private keyStore: KeyStore
   private static protocolVersion: string = "1"
 
@@ -217,20 +329,23 @@ class Blindnet {
     return true
   }
 
-  private constructor(service: BlindnetService, keyStore: KeyStore) {
+  private constructor(service: BlindnetService, storageService: StorageService, keyStore: KeyStore) {
     this.service = service
+    this.storageService = storageService
     this.keyStore = keyStore
   }
 
   static initCustomKeyStore(token: string, keyStore: KeyStore, apiUrl: string = Blindnet.apiUrl) {
     const service = new BlindnetServiceHttp(token, apiUrl, Blindnet.protocolVersion)
-    return new Blindnet(service, keyStore)
+    const storageService = new AzureStorageService()
+    return new Blindnet(service, storageService, keyStore)
   }
 
   static init(token: string, apiUrl: string = Blindnet.apiUrl) {
     const service = new BlindnetServiceHttp(token, apiUrl, Blindnet.protocolVersion)
+    const storageService = new AzureStorageService()
     const keyStore = new IndexedDbKeyStore()
-    return new Blindnet(service, keyStore)
+    return new Blindnet(service, storageService, keyStore)
   }
 
   static async disconnect() {
@@ -318,7 +433,144 @@ class Blindnet {
   }
 
   capture(data: Data): CaptureBuilder {
-    return new CaptureBuilder(data, this.service)
+    return new CaptureBuilder(data, this.service, this.storageService)
+  }
+
+  async retrieve(dataId: string): Promise<{ data: ReadableStream, metadata: Metadata, dataType: DataType }> {
+
+    const { eSK } = await this.getKeys()
+
+    // get data key
+    const encryptedDataKeyresp = await this.service.getDataKey(dataId)
+    const encryptedDataKey = validateServiceResponse(encryptedDataKeyresp, `Fetching data key failed for data with id ${dataId}`)
+
+    const dataKey = await util.mapErrorAsync(
+      () => c.unwrapAESKey(util.b64str2bin(encryptedDataKey), eSK),
+      new error.EncryptionError(`Encrypted data key for data with id ${dataId} could not be decrypted`)
+    )
+
+    // get metadata
+    const encryptedMetadataResp = await this.service.getMetadata(dataId)
+    const encryptedMetadataB64 = validateServiceResponse(encryptedMetadataResp, `Fetching metadata failed for id ${dataId}`)
+    const encMetaBin = util.b64str2bin(encryptedMetadataB64)
+
+    const iv = encMetaBin.slice(0, 12)
+    const decrypted = await util.mapErrorAsync(
+      () => c.decryptData(dataKey, iv, encMetaBin.slice(12)),
+      new error.EncryptionError(`Encrypted data with id ${dataId} could not be decrypted`)
+    )
+
+    let metadata: Metadata, dataType: DataType
+    try {
+      // decode lenght of data type
+      const dataTypeLen = util.from2Bytes(Array.from(new Uint8Array(decrypted.slice(0, 2))))
+      // parse data type
+      const dataTypeBytes = decrypted.slice(2, 2 + dataTypeLen)
+      dataType = JSON.parse(util.bin2str(dataTypeBytes))
+
+      // parse metadata
+      const metadataBytes = decrypted.slice(2 + dataTypeLen)
+      metadata = JSON.parse(util.bin2str(metadataBytes))
+    } catch {
+      throw new error.BadFormatError("Bad data provided")
+    }
+
+    // get download link
+    const getDownloadLinkResp = await this.service.getDownloadLink(dataId)
+    const { date, authorization, url } = validateServiceResponse(getDownloadLinkResp, 'Could not get download link')
+
+    // download from storage
+    const getBlobResp = await this.storageService.downloadBlob(url, authorization, date)
+    const encrytedFileStream = validateServiceResponse(getBlobResp, 'Could not download file')
+
+    const blockSize = 4000000 + 16
+
+    const encryptedFileStreamReader = encrytedFileStream.getReader()
+
+    const chunkedStream = new ReadableStream({
+      start(ctrl) {
+        let leftOverBytes = new Uint8Array()
+
+        function pump() {
+
+          encryptedFileStreamReader.read().then(readRes => {
+            const { done, value: chunk } = readRes
+            if (done) {
+              if (leftOverBytes.length > 0) {
+                ctrl.enqueue(leftOverBytes.slice(0, leftOverBytes.length))
+              }
+              ctrl.close();
+              return undefined;
+            }
+
+            if (leftOverBytes.length + chunk.length === blockSize) {
+
+              var newChunk = new Uint8Array(blockSize)
+              newChunk.set(leftOverBytes, 0)
+              newChunk.set(chunk, leftOverBytes.length)
+              ctrl.enqueue(newChunk)
+              leftOverBytes = new Uint8Array()
+
+            } else if (leftOverBytes.length + chunk.length < blockSize) {
+
+              var newChunk = new Uint8Array(leftOverBytes.length + chunk.length)
+              newChunk.set(leftOverBytes, 0)
+              newChunk.set(chunk, leftOverBytes.length)
+              leftOverBytes = new Uint8Array(newChunk)
+
+            } else if (leftOverBytes.length + chunk.length > blockSize) {
+
+              var newChunk = new Uint8Array(blockSize)
+              newChunk.set(leftOverBytes, 0)
+              newChunk.set(chunk.slice(0, blockSize - leftOverBytes.length), leftOverBytes.length)
+              ctrl.enqueue(newChunk)
+
+              const slicedChunk = chunk.slice(blockSize - leftOverBytes.length)
+
+              function p(v: Uint8Array) {
+                if (v.length < blockSize)
+                  leftOverBytes = new Uint8Array(v)
+                else {
+                  const chunk = v.slice(0, blockSize)
+                  ctrl.enqueue(chunk)
+                  p(v.slice(blockSize))
+                }
+              }
+              p(slicedChunk)
+            }
+
+            pump()
+          })
+        }
+        pump()
+      }
+    })
+
+    const chunkedStreamReader = chunkedStream.getReader()
+
+    const decryptedStream = new ReadableStream({
+      start(ctrl) {
+
+        function pump(i: number) {
+          // @ts-ignore
+          chunkedStreamReader.read().then(async res => {
+            const { done, value } = res
+            if (done || value === undefined) { ctrl.close(); return undefined; }
+
+            const partIv = await c.deriveIv(iv, i)
+
+            const decrypted = await c.decryptData(dataKey, partIv, value)
+
+            ctrl.enqueue(new Uint8Array(decrypted))
+            return pump(i + 1)
+          })
+        }
+
+        return pump(0)
+      }
+    })
+
+    return { data: decryptedStream, metadata, dataType }
   }
 
   async decrypt(encryptedData: ArrayBuffer): Promise<DecryptionResult> {
@@ -484,7 +736,7 @@ class Blindnet {
     return res
   }
 
-  async changeSecret(newSecret: string, oldSecret?: string): Promise<void> {
+  async changeSecret(newSecret: string): Promise<void> {
 
     const { eSK, sSK } = await this.getKeys()
 
