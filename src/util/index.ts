@@ -1,4 +1,4 @@
-import { isBrowser } from "./globals"
+import { isBrowser } from "../globals"
 
 export function str2bin(str: string): ArrayBuffer {
   return new TextEncoder().encode(str)
