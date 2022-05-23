@@ -46,7 +46,7 @@ describe('Blindnet', () => {
   const blindnet = Blindnet.initCustomKeyStore('', keyStore, 'http://localhost:8088')
 
   const connect = async (user: string, pass: string) => {
-    await mockServer.get("/api/v1/keys/me").thenJson(200, users[user])
+    await mockServer.forGet("/api/v1/keys/me").thenJson(200, users[user])
     await blindnet.connect(pass)
   }
   const connectAlice = (pass: string = pass1) => connect(alice, pass)
@@ -64,19 +64,19 @@ describe('Blindnet', () => {
   describe('connect', () => {
 
     it('should fail with AuthenticationError if a bad or expired token is provided', async () => {
-      await mockServer.get("/api/v1/keys/me").thenReply(401, '')
+      await mockServer.forGet("/api/v1/keys/me").thenReply(401, '')
       return expect(blindnet.connect(pass1)).to.eventually.be.rejected.and.have.property('code', 'blindnet.authentication')
     })
 
     it('should fail with BlindnetServiceError if there was a server error', async () => {
-      await mockServer.get("/api/v1/keys/me").thenReply(400, '')
+      await mockServer.forGet("/api/v1/keys/me").thenReply(400, '')
 
       return expect(blindnet.connect(pass1)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should register a new user alice', async () => {
-      await mockServer.get("/api/v1/keys/me").thenReply(400)
-      await mockServer.post("/api/v1/users")
+      await mockServer.forGet("/api/v1/keys/me").thenReply(400)
+      await mockServer.forPost("/api/v1/users")
         // @ts-ignore
         .matching(req => { users[alice] = req.body.json; return true })
         .thenReply(200, '{}')
@@ -89,14 +89,14 @@ describe('Blindnet', () => {
     })
 
     it('should fail with SecretError if a wrong password is provided', async () => {
-      await mockServer.get("/api/v1/keys/me").thenJson(200, users[alice])
+      await mockServer.forGet("/api/v1/keys/me").thenJson(200, users[alice])
 
       return expect(blindnet.connect('asd')).to.eventually.be.rejected.and.have.property('code', 'blindnet.secret')
     })
 
     it('should register a new user bob', async () => {
-      await mockServer.get("/api/v1/keys/me").thenReply(400)
-      await mockServer.post("/api/v1/users")
+      await mockServer.forGet("/api/v1/keys/me").thenReply(400)
+      await mockServer.forPost("/api/v1/users")
         // @ts-ignore
         .matching(req => { users[bob] = req.body.json; return true })
         .thenReply(200, '{}')
@@ -134,35 +134,35 @@ describe('Blindnet', () => {
     })
 
     it('should fail if no users are returned from the server', async () => {
-      await mockServer.post("/api/v1/keys").thenJson(200, [])
+      await mockServer.forPost("/api/v1/keys").thenJson(200, [])
       return expect(blindnet.capture('').forUser('').encrypt()).to.eventually.be.rejected.and.have.property('code', 'blindnet.not_encryptable')
     })
 
     it('should fail with AuthenticationError if a bad or expired token is provided', async () => {
-      await mockServer.post("/api/v1/keys").thenReply(401)
+      await mockServer.forPost("/api/v1/keys").thenReply(401)
       await expect(blindnet.capture('').forUser('').encrypt()).to.eventually.be.rejected.and.have.property('code', 'blindnet.authentication')
 
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
-      await mockServer.post("/api/v1/documents").thenReply(401)
+      await mockServer.forPost("/api/v1/documents").thenReply(401)
       await expect(blindnet.capture('').forUser('').encrypt()).to.eventually.be.rejected.and.have.property('code', 'blindnet.authentication')
     })
 
     it('should fail with BlindnetServiceError for server errors', async () => {
-      await mockServer.post("/api/v1/keys").thenReply(400)
+      await mockServer.forPost("/api/v1/keys").thenReply(400)
       await expect(blindnet.capture('').forUser('').encrypt()).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
 
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
-      await mockServer.post("/api/v1/documents").thenReply(404)
+      await mockServer.forPost("/api/v1/documents").thenReply(404)
       await expect(blindnet.capture('').forUser('').encrypt()).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should encrypt string', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdString] = b; return true }))
         .thenReply(200, `"${dataIdString}"`)
@@ -175,10 +175,10 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt file', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdFile] = b; return true }))
         .thenReply(200, `"${dataIdFile}"`)
@@ -191,10 +191,10 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt binary data', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdBinary] = b; return true }))
         .thenReply(200, `"${dataIdBinary}"`)
@@ -207,10 +207,10 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt JSON', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdJson] = b; return true }))
         .thenReply(200, `"${dataIdJson}"`)
@@ -223,10 +223,10 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt empty metadata', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdMeta1] = b; return true }))
         .thenReply(200, `"${dataIdMeta1}"`)
@@ -239,10 +239,10 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt metadata', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [{ publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice }])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdMeta2] = b; return true }))
         .thenReply(200, `"${dataIdMeta2}"`)
@@ -257,13 +257,13 @@ describe('Blindnet', () => {
     })
 
     it('should encrypt string for multiple users', async () => {
-      await mockServer.post("/api/v1/keys")
+      await mockServer.forPost("/api/v1/keys")
         .thenJson(200, [
           { publicEncryptionKey: users[alice].publicEncryptionKey, userID: alice },
           { publicEncryptionKey: users[bob].publicEncryptionKey, userID: bob }
         ])
 
-      await mockServer.post("/api/v1/documents")
+      await mockServer.forPost("/api/v1/documents")
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => { keys[dataIdMulti] = b; return true }))
         .thenReply(200, `"${dataIdMulti}"`)
@@ -289,20 +289,20 @@ describe('Blindnet', () => {
     })
 
     it('should throw an error if data is in wrong format', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdString}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`)
         .thenReply(200, `"${keys[dataIdString].find(k => k.userID === alice).encryptedSymmetricKey}"`)
       await connectAlice()
       return expect(blindnet.decrypt(datas[dataIdString].slice(0, 40))).to.eventually.be.rejected.and.have.property('code', 'blindnet.encryption')
     })
 
     it('should throw an error if a blindnet server error occurs', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdString}`).thenReply(500)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`).thenReply(500)
       await connectAlice()
       return expect(blindnet.decrypt(datas[dataIdString].slice(0, 40))).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should decrypt string', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdString}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`)
         .thenReply(200, `"${keys[dataIdString].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -315,7 +315,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt file', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdFile}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdFile}`)
         .thenReply(200, `"${keys[dataIdFile].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -332,7 +332,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt binary data', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdBinary}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdBinary}`)
         .thenReply(200, `"${keys[dataIdBinary].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -346,7 +346,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt JSON', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdJson}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdJson}`)
         .thenReply(200, `"${keys[dataIdJson].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -359,7 +359,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt empty metadata', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdMeta1}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdMeta1}`)
         .thenReply(200, `"${keys[dataIdMeta1].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -371,7 +371,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt metadata', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdMeta2}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdMeta2}`)
         .thenReply(200, `"${keys[dataIdMeta2].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -385,7 +385,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt string encrypted for multiple users', async () => {
-      await mockServer.get(`/api/v1/documents/keys/${dataIdMulti}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdMulti}`)
         .thenReply(200, `"${keys[dataIdMulti].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       await connectAlice()
@@ -397,7 +397,7 @@ describe('Blindnet', () => {
       expect(data1).to.eql('hello to two')
 
 
-      await mockServer.get(`/api/v1/documents/keys/${dataIdMulti}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdMulti}`)
         .thenReply(200, `"${keys[dataIdMulti].find(k => k.userID === bob).encryptedSymmetricKey}"`)
 
       await connectBob()
@@ -424,21 +424,21 @@ describe('Blindnet', () => {
     })
 
     it('should throw an error if a blindnet server error occurs', async () => {
-      await mockServer.post(`/api/v1/documents/keys`).thenReply(500)
+      await mockServer.forPost(`/api/v1/documents/keys`).thenReply(500)
 
       await connectAlice()
       return expect(blindnet.decryptMany(Object.values(datas))).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should throw an error if a wrong number of keys is returned from the server', async () => {
-      await mockServer.post(`/api/v1/documents/keys`).thenJson(200, [])
+      await mockServer.forPost(`/api/v1/documents/keys`).thenJson(200, [])
 
       await connectAlice()
       return expect(blindnet.decryptMany(Object.values(datas))).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should throw an error if some of data is in wrong format', async () => {
-      await mockServer.post(`/api/v1/documents/keys`)
+      await mockServer.forPost(`/api/v1/documents/keys`)
         .thenJson(200, Object.entries(keys).map(d => ({ documentID: d[0], encryptedSymmetricKey: d[1].find(dd => dd.userID === alice).encryptedSymmetricKey })))
 
       const d = Object.values(datas)
@@ -448,7 +448,7 @@ describe('Blindnet', () => {
     })
 
     it('should decrypt multiple encrypted data', async () => {
-      await mockServer.post(`/api/v1/documents/keys`)
+      await mockServer.forPost(`/api/v1/documents/keys`)
         .thenJson(200, Object.entries(keys).map(d => ({ documentID: d[0], encryptedSymmetricKey: d[1].find(dd => dd.userID === alice).encryptedSymmetricKey })))
 
       await connectAlice()
@@ -479,56 +479,148 @@ describe('Blindnet', () => {
     })
   })
 
-  describe('giveAccess', () => {
+  describe('giveAccessToData', () => {
     it('should throw an error if local keys are missing', async () => {
       await connectAlice()
       keyStore.clear()
-      return expect(blindnet.giveAccess('')).to.eventually.be.rejected.and.have.property('code', 'blindnet.user_not_initialized')
+      return expect(blindnet.giveAccessToData([], '')).to.eventually.be.rejected.and.have.property('code', 'blindnet.user_not_initialized')
     })
 
     it('should throw an error if obtaining a user key from the server failed', async () => {
-      await mockServer.get(`/api/v1/keys/bob`).thenReply(500)
+      await mockServer.forGet(`/api/v1/keys/bob`).thenReply(500)
       await connectAlice()
-      return expect(blindnet.giveAccess(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+      return expect(blindnet.giveAccessToData([dataIdString], bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should throw an error if obtaining the data keys from the server failed', async () => {
-      await mockServer.get(`/api/v1/keys/bob`)
+      await mockServer.forGet(`/api/v1/keys/bob`)
         .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
-      await mockServer.get(`/api/v1/documents/keys`).thenReply(500)
+      await mockServer.forGet(`/api/v1/documents/keys`).thenReply(500)
       await connectAlice()
 
-      return expect(blindnet.giveAccess(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+      return expect(blindnet.giveAccessToData([dataIdString], bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should throw an error if storing new keys failed', async () => {
-      await mockServer.get(`/api/v1/keys/bob`)
+      await mockServer.forGet(`/api/v1/keys/bob`)
         .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
-      await mockServer.get(`/api/v1/documents/keys`)
+      await mockServer.forGet(`/api/v1/documents/keys`)
         .thenJson(200, [
           { documentID: dataIdString, encryptedSymmetricKey: keys[dataIdString][0].encryptedSymmetricKey },
           { documentID: dataIdBinary, encryptedSymmetricKey: keys[dataIdBinary][0].encryptedSymmetricKey },
           { documentID: dataIdMeta2, encryptedSymmetricKey: keys[dataIdMeta2][0].encryptedSymmetricKey }
         ])
-      await mockServer.put('/api/v1/documents/keys/user/bob').thenReply(500)
+      await mockServer.forPut('/api/v1/documents/keys/user/bob').thenReply(500)
 
       await connectAlice()
 
-      return expect(blindnet.giveAccess(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+      return expect(blindnet.giveAccessToData([dataIdString, dataIdBinary], bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
-    it('should successfully give access to another user', async () => {
+    it('should successfully give access to data to another user', async () => {
       let bobKey0, bobKey1, bobKey2
 
-      await mockServer.get(`/api/v1/keys/bob`)
+      await mockServer.forGet(`/api/v1/keys/bob`)
         .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
-      await mockServer.get(`/api/v1/documents/keys`)
+      await mockServer.forPost(`/api/v1/documents/keys`)
+        .thenJson(200, [
+          { documentID: dataIdString, encryptedSymmetricKey: keys[dataIdString][0].encryptedSymmetricKey },
+          { documentID: dataIdMeta2, encryptedSymmetricKey: keys[dataIdMeta2][0].encryptedSymmetricKey }
+        ])
+      await mockServer.forPut('/api/v1/documents/keys/user/bob')
+        // @ts-ignore
+        .matching(req => req.body.getJson().then(b => {
+          bobKey0 = b[0].encryptedSymmetricKey;
+          bobKey1 = b[1].encryptedSymmetricKey;
+          return true
+        }))
+        .thenReply(200, 'true')
+
+      await connectAlice()
+
+      await blindnet.giveAccessToData([dataIdString, dataIdMeta2], bob)
+
+
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`)
+        .thenJson(200, bobKey0)
+
+      await connectBob()
+
+      const encryptedData = datas[dataIdString]
+      const { data, dataType } = await blindnet.decrypt(encryptedData)
+
+      expect(dataType.type).to.eq('String')
+      expect(data).to.eql('hello')
+
+
+      await mockServer.forPost(`/api/v1/documents/keys`)
+        .thenJson(200, [
+          { documentID: dataIdString, encryptedSymmetricKey: bobKey0 },
+          { documentID: dataIdMeta2, encryptedSymmetricKey: bobKey1 }
+        ])
+
+      await connectBob()
+
+      const result = await blindnet.decryptMany([datas[dataIdString], datas[dataIdMeta2]])
+
+      expect(result[0].dataType.type).to.eq('String')
+      expect(result[0].data).to.eql('hello')
+      expect(result[0].metadata).to.eql({})
+
+      expect(result[1].metadata).to.eql({ x: '', y: [{ z: true }, 2], q: { w: '' } })
+    })
+  })
+
+  describe('giveAccessToAllData', () => {
+    it('should throw an error if local keys are missing', async () => {
+      await connectAlice()
+      keyStore.clear()
+      return expect(blindnet.giveAccessToAllData('')).to.eventually.be.rejected.and.have.property('code', 'blindnet.user_not_initialized')
+    })
+
+    it('should throw an error if obtaining a user key from the server failed', async () => {
+      await mockServer.forGet(`/api/v1/keys/bob`).thenReply(500)
+      await connectAlice()
+      return expect(blindnet.giveAccessToAllData(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+    })
+
+    it('should throw an error if obtaining the data keys from the server failed', async () => {
+      await mockServer.forGet(`/api/v1/keys/bob`)
+        .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
+      await mockServer.forGet(`/api/v1/documents/keys`).thenReply(500)
+      await connectAlice()
+
+      return expect(blindnet.giveAccessToAllData(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+    })
+
+    it('should throw an error if storing new keys failed', async () => {
+      await mockServer.forGet(`/api/v1/keys/bob`)
+        .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
+      await mockServer.forGet(`/api/v1/documents/keys`)
         .thenJson(200, [
           { documentID: dataIdString, encryptedSymmetricKey: keys[dataIdString][0].encryptedSymmetricKey },
           { documentID: dataIdBinary, encryptedSymmetricKey: keys[dataIdBinary][0].encryptedSymmetricKey },
           { documentID: dataIdMeta2, encryptedSymmetricKey: keys[dataIdMeta2][0].encryptedSymmetricKey }
         ])
-      await mockServer.put('/api/v1/documents/keys/user/bob')
+      await mockServer.forPut('/api/v1/documents/keys/user/bob').thenReply(500)
+
+      await connectAlice()
+
+      return expect(blindnet.giveAccessToAllData(bob)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
+    })
+
+    it('should successfully give access to all data to another user', async () => {
+      let bobKey0, bobKey1, bobKey2
+
+      await mockServer.forGet(`/api/v1/keys/bob`)
+        .thenJson(200, { publicEncryptionKey: users[bob].publicEncryptionKey, publicSigningKey: users[bob].publicSigningKey })
+      await mockServer.forGet(`/api/v1/documents/keys`)
+        .thenJson(200, [
+          { documentID: dataIdString, encryptedSymmetricKey: keys[dataIdString][0].encryptedSymmetricKey },
+          { documentID: dataIdBinary, encryptedSymmetricKey: keys[dataIdBinary][0].encryptedSymmetricKey },
+          { documentID: dataIdMeta2, encryptedSymmetricKey: keys[dataIdMeta2][0].encryptedSymmetricKey }
+        ])
+      await mockServer.forPut('/api/v1/documents/keys/user/bob')
         // @ts-ignore
         .matching(req => req.body.getJson().then(b => {
           bobKey0 = b[0].encryptedSymmetricKey;
@@ -540,10 +632,10 @@ describe('Blindnet', () => {
 
       await connectAlice()
 
-      await blindnet.giveAccess(bob)
+      await blindnet.giveAccessToAllData(bob)
 
 
-      await mockServer.get(`/api/v1/documents/keys/${dataIdString}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`)
         .thenJson(200, bobKey0)
 
       await connectBob()
@@ -557,7 +649,7 @@ describe('Blindnet', () => {
 
       const d = [datas[dataIdString], datas[dataIdBinary], datas[dataIdMeta2], datas[dataIdMulti]]
 
-      await mockServer.post(`/api/v1/documents/keys`)
+      await mockServer.forPost(`/api/v1/documents/keys`)
         .thenJson(200, [
           { documentID: dataIdString, encryptedSymmetricKey: bobKey0 },
           { documentID: dataIdBinary, encryptedSymmetricKey: bobKey1 },
@@ -584,6 +676,8 @@ describe('Blindnet', () => {
     })
   })
 
+
+
   describe('changeSecret', () => {
     it('should throw an error if local keys are missing', async () => {
       await connectAlice()
@@ -592,13 +686,13 @@ describe('Blindnet', () => {
     })
 
     it('should throw an error if storing the new encrypted keys failed', async () => {
-      await mockServer.put(`/api/v1/keys/me`).thenReply(500)
+      await mockServer.forPut(`/api/v1/keys/me`).thenReply(500)
       await connectAlice()
       return expect(blindnet.changeSecret(new_pass1)).to.eventually.be.rejected.and.have.property('code', 'blindnet.service')
     })
 
     it('should successfully change a secret', async () => {
-      await mockServer.put(`/api/v1/keys/me`)
+      await mockServer.forPut(`/api/v1/keys/me`)
         .matching(req => { users[alice] = { ...users[alice], ...req.body.json }; return true })
         .thenReply(200, 'true')
 
@@ -609,7 +703,7 @@ describe('Blindnet', () => {
       await connectAlice(new_pass1)
 
 
-      await mockServer.get(`/api/v1/documents/keys/${dataIdString}`)
+      await mockServer.forGet(`/api/v1/documents/keys/${dataIdString}`)
         .thenReply(200, `"${keys[dataIdString].find(k => k.userID === alice).encryptedSymmetricKey}"`)
 
       const encryptedData = datas[dataIdString]

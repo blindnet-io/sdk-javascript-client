@@ -436,7 +436,7 @@ class Blindnet {
     return new CaptureBuilder(data, this.service, this.storageService)
   }
 
-  async retrieve(dataId: string): Promise<{ data: ReadableStream, metadata: Metadata, dataType: DataType }> {
+  async retrieve(dataId: string): Promise<{ data: ReadableStream<Uint8Array>, metadata: Metadata, dataType: DataType }> {
 
     const { eSK } = await this.getKeys()
 
@@ -756,14 +756,24 @@ class Blindnet {
     await this.keyStore.storeKey('derived', new_aesKey)
   }
 
-  async giveAccess(userId: string): Promise<void> {
+  async giveAccessToData(dataIds: Array<string>, userId: string): Promise<void> {
+    return this.giveAccess(() => this.service.getDataKeys(dataIds), userId)
+  }
 
+  async giveAccessToAllData(userId: string): Promise<void> {
+    return this.giveAccess(() => this.service.getAllDataKeys(), userId)
+  }
+
+  private async giveAccess(
+    getDataKeys: () => Promise<ServiceResponse<{ documentID: string, encryptedSymmetricKey: string }[]>>,
+    userId: string
+  ): Promise<void> {
     const { eSK } = await this.getKeys()
 
     const resp1 = await this.service.getUsersPublicKey(userId)
     const user = validateServiceResponse(resp1, `Fetching the public key of a user ${userId} failed`)
 
-    const resp2 = await this.service.getAllDataKeys()
+    const resp2 = await getDataKeys()
     const encryptedDataKeys = validateServiceResponse(resp2, `Fetching the encrypted data keys failed`)
 
     const userPK = await util.mapErrorAsync(
