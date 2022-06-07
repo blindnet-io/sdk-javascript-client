@@ -13,6 +13,7 @@
     "clean": "rimraf lib",
     "prepare": "husky install",
     "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
+    "itest": "playwright test",
     "build": "npm run clean && rollup -c"
   },
   "keywords": [
