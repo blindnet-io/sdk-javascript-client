@@ -34,7 +34,7 @@ This is the JavaScript client-side SDK component of [blindnet devkit][devkit] al
 
 ## Get Started
 
-:rocket: Check out our [Quick Start Guide](http://localhost:3000/docs/quickstart) to get started in a snap.
+:rocket: Check out our [Quick Start Guide](https://blindnet.dev/docs/quickstart) to get started in a snap.
 
 ## Installation
 
