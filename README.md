@@ -68,7 +68,7 @@ Stay up to date with new releases and projects, learn more about how to protect 
 
 ## License
 
-The blindnet devkit sdk-javascript-client is available under [MIT](license) (and [here](https://github.com/blindnet-io/openness-framework/blob/main/docs/decision-records/DR-0001-oss-license.md) is why).
+The blindnet devkit sdk-javascript-client is available under [MIT][license] (and [here](https://github.com/blindnet-io/openness-framework/blob/main/docs/decision-records/DR-0001-oss-license.md) is why).
 
 <!-- project's URLs -->
 
