@@ -6,7 +6,7 @@
 <p align=center><img src="https://user-images.githubusercontent.com/7578400/163549893-117bbd70-b81a-47fd-8e1f-844911e48d68.png#gh-dark-mode-only" height="80" /></p>
 
 <p align="center">
-  <strong>JavaScript <a href="https://blindnet.dev/docs/extra/glossary/#client-side-sdk">client-side SDK</a> for e2e encryption and users management.</strong>
+  <strong>JavaScript <a href="https://blindnet.dev/docs/glossary#client-side-sdk">client-side SDK</a> for e2e encryption and users management.</strong>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 This is the JavaScript client-side SDK component of [blindnet devkit][devkit] allowing you to:
 
 - [encrypt and decrypt data](https://blindnet.dev/docs/extra/glossary/#encrypted-data) for users,
-- and manage [user](https://blindnet.dev/docs/extra/glossary/#key-pair) and [data](https://docs.blindnet.io/docs/extra/glossary/#encrypted-data-key) encryption keys.
+- and manage [user](https://blindnet.dev/docs/extra/glossary/#key-pair) and [data](https://blindnet.dev/docs/glossary#encrypted-data-key) encryption keys.
 
 ## Get Started
 
