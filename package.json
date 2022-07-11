@@ -1,24 +1,60 @@
 {
-  "name": "blindnet-sdk-js",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "@blindnet/sdk-javascript",
+  "version": "0.3.1",
+  "description": "The javascript web client SDK for blindnet.",
+  "main": "lib/index.cjs.js",
+  "module": "lib/index.esm.js",
+  "browser": "lib/index.umd.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib"
+  ],
   "scripts": {
-    "start": "webpack serve --config webpack.dev.js",
-    "build-dev": "webpack --config webpack.dev.js",
-    "build-min": "webpack --config webpack.prod.js"
+    "clean": "rimraf lib",
+    "prepare": "husky install",
+    "test": "./node_modules/mocha/bin/mocha --reporter spec --require ts-node/register test/**/*.test.ts",
+    "build": "npm run clean && rollup -c"
   },
+  "keywords": [
+    "blindnet",
+    "sdk"
+  ],
   "author": "blindnet",
-  "license": "ISC",
+  "homepage": "https://blindnet.io",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blindnet-io/blindnet-sdk-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blindnet-io/blindnet-sdk-js/issues"
+  },
   "dependencies": {
-    "idb-keyval": "^5.0.5"
+    "idb-keyval": "^5.0.5",
+    "noble-ed25519": "^1.2.1"
   },
   "devDependencies": {
+    "@types/chai": "^4.2.16",
+    "@types/chai-as-promised": "^7.1.1",
+    "@types/mocha": "^8.2.2",
+    "chai": "^4.3.4",
+    "chai-as-promised": "^7.1.1",
+    "husky": "^6.0.0",
+    "mocha": "^9.2.0",
+    "mockttp": "^2.4.0",
+    "rimraf": "^3.0.2",
+    "rollup": "^2.47.0",
+    "rollup-plugin-commonjs": "^9.2.0",
+    "rollup-plugin-delete": "^2.0.0",
+    "rollup-plugin-node-resolve": "^4.0.0",
+    "rollup-plugin-terser": "^7.0.2",
+    "rollup-plugin-typescript": "^1.0.0",
+    "rollup-plugin-typescript2": "^0.30.0",
     "ts-loader": "^8.1.0",
+    "ts-node": "^9.1.1",
+    "tslib": "^1.9.3",
     "typescript": "^4.2.4",
-    "webpack": "^5.32.0",
-    "webpack-cli": "^4.6.0",
-    "webpack-dev-server": "^3.11.2",
-    "webpack-merge": "^5.7.3"
+    "uuid": "^8.3.2",
+    "web-file-polyfill": "^1.0.1"
   }
 }
