@@ -1,12 +1,12 @@
 <h1 align="center">
-  blindnet devkit<br />Javascript Client SDK
+  blindnet encryption engine<br />Javascript Client SDK
 </h1>
 
 <p align=center><img src="https://user-images.githubusercontent.com/7578400/163277439-edd00509-1d1b-4565-a0d3-49057ebeb92a.png#gh-light-mode-only" height="80" /></p>
 <p align=center><img src="https://user-images.githubusercontent.com/7578400/163549893-117bbd70-b81a-47fd-8e1f-844911e48d68.png#gh-dark-mode-only" height="80" /></p>
 
 <p align="center">
-  <strong>JavaScript <a href="https://blindnet.dev/docs/glossary#client-side-sdk">client-side SDK</a> for e2e encryption and users management.</strong>
+  <strong>JavaScript <a href="https://blindnet.dev/docs/references/glossary#client-side-sdk">client-side SDK</a> for e2e encryption and users management.</strong>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://blindnet.dev/docs">Documentation</a>
+  <a href="https://blindnet.dev/docs/encryption">Documentation</a>
   &nbsp;•&nbsp;
   <!-- TODO: <a href="CONTRIBUTING.md">Contributing Guidelines</a>
   &nbsp;•&nbsp; -->
@@ -27,14 +27,14 @@
 
 ## About
 
-This is the JavaScript client-side SDK component of [blindnet devkit][devkit] allowing you to:
+This is the JavaScript client-side SDK component of blindnet encryption engine allowing you to:
 
-- [encrypt and decrypt data](https://blindnet.dev/docs/extra/glossary/#encrypted-data) for users,
-- and manage [user](https://blindnet.dev/docs/extra/glossary/#key-pair) and [data](https://blindnet.dev/docs/glossary#encrypted-data-key) encryption keys.
+- [encrypt and decrypt data](https://blindnet.dev/docs/references/glossary#encrypted-data) for users,
+- and manage [user](https://blindnet.dev/docs/references/glossary#key-pair) and [data](https://blindnet.dev/docs/references/glossary#encrypted-data-key) encryption keys.
 
 ## Get Started
 
-:rocket: Check out our [Tutorial](https://blindnet.dev/docs/tutorial) to get started in a snap.
+:rocket: Check out our [tutorial](https://blindnet.dev/docs/encryption/quickstart) to get started in a snap.
 
 ## Installation
 
@@ -46,7 +46,7 @@ npm install @blindnet/sdk-javascript
 
 ## Usage
 
-📑 The API reference of this SDK is available on [blindnet.dev](https://blindnet.dev/docs/api_reference/client/javascript/latest).
+📑 The API reference of this SDK is available on [blindnet.dev](https://blindnet.dev/docs/encryption/api_reference/js-client).
 
 ## Contributing
 
